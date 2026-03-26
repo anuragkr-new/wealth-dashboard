@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Wallet,
@@ -28,7 +28,20 @@ const nav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  async function signOut() {
+    await fetch("/api/access", { method: "DELETE" });
+    router.push("/access");
+    router.refresh();
+  }
+
+  if (pathname === "/access") {
+    return (
+      <div className="min-h-screen bg-background glow-accent">{children}</div>
+    );
+  }
 
   const NavLinks = ({ onNavigate }: { onNavigate?: () => void }) => (
     <>
@@ -100,10 +113,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="relative flex flex-1 flex-col gap-1 overflow-y-auto p-3">
           <NavLinks onNavigate={() => setMobileOpen(false)} />
         </nav>
-        <div className="relative border-t border-white/10 p-4">
+        <div className="relative space-y-3 border-t border-white/10 p-4">
           <p className="font-mono text-[10px] uppercase tracking-widest text-white/35">
             Local · INR
           </p>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className="w-full rounded-lg border border-white/15 px-3 py-2 text-left text-xs font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white"
+          >
+            Sign out
+          </button>
         </div>
       </aside>
 
