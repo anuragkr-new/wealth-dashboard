@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AssetCategory {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  icon       String?
+  growthRate Float    @default(0)
+  createdAt  DateTime @default(now())
+  assets     Asset[]
+}
+
+model Asset {
+  id         String        @id @default(cuid())
+  name       String
+  value      Float
+  category   AssetCategory @relation(fields: [categoryId], references: [id])
+  categoryId String
+  notes      String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model MonthlyPlan {
+  id             String        @id @default(cuid())
+  month          Int
+  year           Int
+  plannedIncome  Float
+  actualIncome   Float?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  expenseItems   ExpenseItem[]
+
+  @@unique([month, year])
+}
+
+model ExpenseItem {
+  id             String      @id @default(cuid())
+  label          String
+  plannedAmount  Float
+  actualAmount   Float?
+  plan           MonthlyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  planId         String
+  createdAt      DateTime    @default(now())
+}
+
+model DeviationLog {
+  id                  String   @id @default(cuid())
+  month               Int
+  year                Int
+  plannedIncome       Float
+  actualIncome        Float
+  plannedTotalExpense Float
+  actualTotalExpense  Float
+  plannedNetSaving    Float
+  actualNetSaving     Float
+  overallDeviation    Float
+  notes               String?
+  createdAt           DateTime @default(now())
+
+  @@unique([month, year])
+}
+
+model WealthSnapshot {
+  id               String   @id @default(cuid())
+  month            Int
+  year             Int
+  totalNetWorth    Float
+  grossAssets      Float
+  totalLiabilities Float
+  createdAt        DateTime @default(now())
+
+  @@unique([month, year])
+}
+
+model Loan {
+  id              String              @id @default(cuid())
+  name            String
+  lender          String?
+  principalAmount Float
+  interestRate    Float
+  tenureMonths    Int
+  startDate       DateTime
+  emiAmount       Float
+  notes           String?
+  createdAt       DateTime            @default(now())
+  scheduleEntries LoanScheduleEntry[]
+}
+
+model LoanScheduleEntry {
+  id                 String   @id @default(cuid())
+  loan               Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  loanId             String
+  month              Int
+  year               Int
+  emiAmount          Float
+  principalComponent Float
+  interestComponent  Float
+  outstandingBalance Float
+  createdAt          DateTime @default(now())
+
+  @@unique([loanId, month, year])
+}
+
+model CreditCardDebt {
+  id          String   @id @default(cuid())
+  cardName    String
+  outstanding Float
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
+
+model Milestone {
+  id           String    @id @default(cuid())
+  name         String
+  targetAmount Float
+  targetDate   DateTime
+  status       String    @default("active")
+  achievedAt   DateTime?
+  createdAt    DateTime  @default(now())
+}

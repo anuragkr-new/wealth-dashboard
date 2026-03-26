@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #fafafa;
+  --foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #0052ff;
+  --accent-secondary: #4d7cff;
+  --accent-foreground: #ffffff;
+  --border: #e2e8f0;
+  --card: #ffffff;
+  --ring: #0052ff;
+  --destructive: #dc2626;
+  --success: #15803d;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .gradient-text {
+    background: linear-gradient(to right, var(--accent), var(--accent-secondary));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .gradient-bg {
+    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+  }
+
+  .dot-pattern {
+    background-image: radial-gradient(
+      circle,
+      rgba(255, 255, 255, 0.06) 1px,
+      transparent 1px
+    );
+    background-size: 32px 32px;
+  }
+
+  .dot-pattern-dark {
+    background-image: radial-gradient(
+      circle,
+      rgba(255, 255, 255, 0.04) 1px,
+      transparent 1px
+    );
+    background-size: 28px 28px;
+  }
+
+  .glow-accent {
+    background: radial-gradient(
+      circle at 30% 20%,
+      rgba(0, 82, 255, 0.08) 0%,
+      transparent 55%
+    );
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .motion-safe\:animate-pulse-dot,
+    .motion-safe\:animate-float,
+    .motion-safe\:animate-spin-slow {
+      animation: none !important;
+    }
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.75;
+  }
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .motion-safe\:animate-float {
+    animation: float-soft 5s ease-in-out infinite;
+  }
+  .motion-safe\:animate-spin-slow {
+    animation: spin-slow 60s linear infinite;
+  }
+}
