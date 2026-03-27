@@ -4,6 +4,7 @@ import {
   computeForecast,
   computeMilestoneTrajectory,
   resolveDefaultMonthlySaving,
+  resolveMonthlyMutualFundInvestment,
 } from "@/lib/forecast";
 import { monthsBetween } from "@/lib/utils";
 
@@ -19,10 +20,12 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const override = searchParams.get("monthlyNetSaving");
-  const monthlyNetSaving =
+  const [monthlyNetSaving, monthlyMutualFundFromBudget] = await Promise.all([
     override != null
-      ? Number(override)
-      : await resolveDefaultMonthlySaving();
+      ? Promise.resolve(Number(override))
+      : resolveDefaultMonthlySaving(),
+    resolveMonthlyMutualFundInvestment(),
+  ]);
 
   const saving = Number.isFinite(monthlyNetSaving) ? monthlyNetSaving : 0;
 
@@ -30,6 +33,7 @@ export async function GET(req: Request) {
     targetAmount: active.targetAmount,
     targetDate: active.targetDate,
     monthlyNetSaving: saving,
+    monthlyMutualFundInvestment: monthlyMutualFundFromBudget,
   });
 
   const now = new Date();
@@ -43,12 +47,14 @@ export async function GET(req: Request) {
   const chartPoints = await computeForecast({
     horizonMonths: horizon,
     monthlyNetSaving: saving,
+    monthlyMutualFundInvestment: monthlyMutualFundFromBudget,
     includeCurrentMonth: true,
   });
 
   return NextResponse.json({
     ...trajectory,
     monthlyNetSaving: saving,
+    monthlyMutualFundFromBudget,
     chartPoints,
     milestone: active,
   });

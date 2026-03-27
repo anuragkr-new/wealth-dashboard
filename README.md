@@ -47,6 +47,63 @@ Dates supported include `YYYY-MM-DD`, `MM/YYYY`, `YYYY-MM`, and **slash dates** 
 3. In Railway → your **web** service → **Settings** → **Source**: connect the same GitHub repo and branch (`main`). Turn **on** automatic deployments for that branch (default when connected).
 4. After the first push, Railway builds from Git; later pushes to `main` redeploy automatically. You can still use `railway up` for ad-hoc uploads, but Git is the source of truth for auto-deploy.
 
+## Staging (Git branch + Railway)
+
+Goal: a **`staging`** branch on GitHub and a **separate Railway service** (or environment) that deploys only when `staging` updates.
+
+### One-time — GitHub
+
+Create the branch (from current `main`) and push:
+
+```bash
+git fetch origin
+git checkout main && git pull origin main
+git checkout -b staging
+git push -u origin staging
+```
+
+After that, updates to staging usually come by merging `main` (see below).
+
+### One-time — Railway
+
+1. Open your Railway **project** → **New** → **GitHub Repo** (or duplicate the production service).
+2. Name it e.g. **wealth-dashboard-staging**.
+3. In the service **Settings** → **Source** (or **Deploy**): connect the **same repo**, set **branch** to **`staging`** (not `main`). Enable automatic deploys on push.
+4. Add **PostgreSQL** for staging (new database plugin — do not share production DB). Set **`DATABASE_URL`** on the staging service to that database (variable reference is fine).
+5. Copy other env vars from production as needed (`ACCESS_COOKIE_*`, etc.); use different cookie values if staging should not share prod login.
+
+When you **push to `staging`**, Railway builds and runs `railway.toml`’s start command (`prisma migrate deploy` + `next start`). Run seed once against staging if you need data: `railway run --service <staging> npm run db:seed`.
+
+### Every release to staging (merge main → staging)
+
+From the repo root:
+
+```bash
+npm run staging:sync
+```
+
+This runs `scripts/push-staging.sh`: updates `main`, merges `main` into `staging`, and **`git push origin staging`**, which triggers the staging deploy on Railway.
+
+Manual equivalent:
+
+```bash
+git checkout main && git pull
+git checkout staging && git merge main --no-edit && git push origin staging
+git checkout main
+```
+
+### CI (optional)
+
+To run **`lint` + `build`** on every push to **`staging`**, copy the template into place and commit:
+
+```bash
+mkdir -p .github/workflows
+cp scripts/staging-ci.github-actions.yml.example .github/workflows/staging-ci.yml
+git add .github/workflows/staging-ci.yml && git commit -m "ci: staging workflow" && git push
+```
+
+That push needs a GitHub token with the **`workflow`** scope (or use GitHub Desktop). Until then, Railway still deploys from **`staging`**; you just skip GitHub Actions.
+
 ## Deploy on Railway
 
 1. Create a **new project** → add **PostgreSQL** → add a service from **this GitHub repo** (or deploy with CLI).

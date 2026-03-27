@@ -29,6 +29,7 @@ export function ForecastClient() {
       expectedNetWorth: number;
     }>
   >([]);
+  const [mfFromBudget, setMfFromBudget] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function refreshCategories() {
@@ -53,6 +54,11 @@ export function ForecastClient() {
     const data = await r.json();
     setPoints(data.points);
     setMonthlySaving(String(data.monthlyNetSaving ?? ""));
+    setMfFromBudget(
+      typeof data.monthlyMutualFundFromBudget === "number"
+        ? data.monthlyMutualFundFromBudget
+        : null
+    );
     setLoading(false);
   }
 
@@ -89,7 +95,20 @@ export function ForecastClient() {
                 </Button>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Defaults from recent actuals or latest plan.
+                Defaults from recent actuals or latest plan. Expense lines
+                labelled like mutual funds / SIP / ELSS count as investing, not
+                spending:{" "}
+                {mfFromBudget != null && mfFromBudget > 0 ? (
+                  <>
+                    <span className="font-medium text-slate-700">
+                      {formatINR(mfFromBudget)}/mo
+                    </span>{" "}
+                    from your budget is added in the forecast on top of the
+                    number above.
+                  </>
+                ) : (
+                  <>none detected in recent months — name a line e.g. SIP or Mutual funds.</>
+                )}
               </p>
             </div>
             <div className="space-y-2">

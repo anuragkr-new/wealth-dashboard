@@ -4,6 +4,7 @@ import { calculateNetWorth } from "@/lib/networth";
 import {
   computeMilestoneTrajectory,
   resolveDefaultMonthlySaving,
+  resolveMonthlyMutualFundInvestment,
 } from "@/lib/forecast";
 import { upsertCurrentWealthSnapshot } from "@/lib/snapshot";
 
@@ -24,6 +25,7 @@ export async function GET() {
     plan,
     prevSnap,
     monthlyNetSaving,
+    monthlyMutualFundFromBudget,
   ] = await Promise.all([
     calculateNetWorth(now),
     prisma.assetCategory.findMany({
@@ -48,6 +50,7 @@ export async function GET() {
       orderBy: [{ year: "desc" }, { month: "desc" }],
     }),
     resolveDefaultMonthlySaving(),
+    resolveMonthlyMutualFundInvestment(),
   ]);
 
   let milestoneInsight: {
@@ -62,6 +65,7 @@ export async function GET() {
       targetAmount: activeMilestone.targetAmount,
       targetDate: activeMilestone.targetDate,
       monthlyNetSaving,
+      monthlyMutualFundInvestment: monthlyMutualFundFromBudget,
     });
   }
 

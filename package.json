@@ -12,7 +12,8 @@
     "db:down": "docker compose down",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "staging:sync": "bash scripts/push-staging.sh"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

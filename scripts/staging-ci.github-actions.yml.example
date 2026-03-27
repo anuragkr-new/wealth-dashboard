@@ -1,0 +1,31 @@
+# Copy to .github/workflows/staging-ci.yml and commit when your GitHub token has the `workflow` scope.
+# Runs on every push to `staging` (and PRs targeting it).
+
+name: Staging CI
+
+on:
+  push:
+    branches: [staging]
+  pull_request:
+    branches: [staging]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint & build
+        run: |
+          npm run lint
+          npm run build

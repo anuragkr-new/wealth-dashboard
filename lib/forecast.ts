@@ -1,4 +1,5 @@
 import type { AssetCategory, LoanScheduleEntry } from "@prisma/client";
+import { sumMutualFundBudgetLines } from "./budget-investment-lines";
 import { calculateNetWorth } from "./networth";
 import { scheduleOutstandingAsOf } from "./loans";
 import { prisma } from "./prisma";
@@ -49,6 +50,8 @@ function projectAssets(
 export async function computeForecast(options: {
   horizonMonths: number;
   monthlyNetSaving: number;
+  /** Budget MF/SIP lines per month; defaults from recent budget if omitted. */
+  monthlyMutualFundInvestment?: number;
   from?: Date;
   includeCurrentMonth?: boolean;
 }): Promise<ForecastPoint[]> {
@@ -56,15 +59,19 @@ export async function computeForecast(options: {
   const cy = from.getFullYear();
   const cm = from.getMonth() + 1;
 
-  const [categories, loans, ccAgg] = await Promise.all([
+  const [categories, loans, ccAgg, mfMonthly] = await Promise.all([
     prisma.assetCategory.findMany({ include: { assets: true } }),
     prisma.loan.findMany({ include: { scheduleEntries: true } }),
     prisma.creditCardDebt.aggregate({ _sum: { outstanding: true } }),
+    options.monthlyMutualFundInvestment != null
+      ? Promise.resolve(options.monthlyMutualFundInvestment)
+      : resolveMonthlyMutualFundInvestment(),
   ]);
 
   const cats = categoryTotals(categories);
   const ccFlat = ccAgg._sum.outstanding ?? 0;
   const { monthlyNetSaving, horizonMonths, includeCurrentMonth } = options;
+  const monthlyWealthBuildup = monthlyNetSaving + mfMonthly;
 
   const points: ForecastPoint[] = [];
 
@@ -105,9 +112,9 @@ export async function computeForecast(options: {
     const conservativeAssets = projectAssets(cats, k, 0.5);
 
     const expectedNetWorth =
-      expectedAssets + monthlyNetSaving * k - loanLiab - ccFlat;
+      expectedAssets + monthlyWealthBuildup * k - loanLiab - ccFlat;
     const conservativeNetWorth =
-      conservativeAssets + monthlyNetSaving * k - loanLiab - ccFlat;
+      conservativeAssets + monthlyWealthBuildup * k - loanLiab - ccFlat;
 
     points.push({
       label,
@@ -132,6 +139,7 @@ export async function computeMilestoneTrajectory(options: {
   targetAmount: number;
   targetDate: Date;
   monthlyNetSaving: number;
+  monthlyMutualFundInvestment?: number;
   from?: Date;
 }): Promise<TrajectoryResult> {
   const from = options.from ?? new Date();
@@ -143,9 +151,14 @@ export async function computeMilestoneTrajectory(options: {
   const deltaToTarget = monthsBetween(cy, cm, ty, tm);
   const horizonForTarget = Math.max(60, deltaToTarget + 6, 12);
 
+  const mf =
+    options.monthlyMutualFundInvestment ??
+    (await resolveMonthlyMutualFundInvestment());
+
   const points = await computeForecast({
     horizonMonths: horizonForTarget,
     monthlyNetSaving: options.monthlyNetSaving,
+    monthlyMutualFundInvestment: mf,
     from,
   });
 
@@ -192,12 +205,45 @@ export async function computeMilestoneTrajectory(options: {
   };
 }
 
-export async function resolveDefaultMonthlySaving(): Promise<number> {
-  const plans = await prisma.monthlyPlan.findMany({
+async function loadRecentPlansForForecast() {
+  return prisma.monthlyPlan.findMany({
     orderBy: [{ year: "desc" }, { month: "desc" }],
     take: 12,
     include: { expenseItems: true },
   });
+}
+
+/**
+ * Average monthly total on budget lines that look like mutual fund / SIP
+ * (same recency rules as default net saving: last 3 full-actual months, else latest planned).
+ */
+export async function resolveMonthlyMutualFundInvestment(): Promise<number> {
+  const plans = await loadRecentPlansForForecast();
+
+  const withActuals = plans.filter(
+    (p) =>
+      p.actualIncome != null &&
+      p.expenseItems.every((e) => e.actualAmount != null)
+  );
+
+  const last3 = withActuals.slice(0, 3);
+  if (last3.length) {
+    const sums = last3.map((p) =>
+      sumMutualFundBudgetLines(p.expenseItems, true)
+    );
+    return sums.reduce((a, b) => a + b, 0) / sums.length;
+  }
+
+  const latest = plans[0];
+  if (latest) {
+    return sumMutualFundBudgetLines(latest.expenseItems, false);
+  }
+
+  return 0;
+}
+
+export async function resolveDefaultMonthlySaving(): Promise<number> {
+  const plans = await loadRecentPlansForForecast();
 
   const withActuals = plans.filter(
     (p) =>
