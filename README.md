@@ -44,12 +44,41 @@ Dates supported include `YYYY-MM-DD`, `MM/YYYY`, `YYYY-MM`, and **slash dates** 
    git push -u origin main
    ```
 
-3. In Railway → your **web** service → **Settings** → **Source**: connect the same GitHub repo and branch (`main`). Turn **on** automatic deployments for that branch (default when connected).
-4. After the first push, Railway builds from Git; later pushes to `main` redeploy automatically. You can still use `railway up` for ad-hoc uploads, but Git is the source of truth for auto-deploy.
+3. In Railway → your **production** web service → **Settings** → **Source**: connect the same GitHub repo and branch **`main`**. Turn **on** automatic deployments for that branch (default when connected).
+4. After the first push, Railway builds from Git; **pushes to `main` deploy production**. For day-to-day work, follow **Staging → production** in the [Default release order](#default-release-order-staging-first-then-production) section below (push `staging` first, test, then push `main`).
 
 ## Staging (Git branch + Railway)
 
 Goal: a **`staging`** branch on GitHub and a **separate Railway service** (or environment) that deploys only when `staging` updates.
+
+### Default release order: staging first, then production
+
+**Always exercise changes on staging before updating production** (Railway URL for the staging service). Production should track **`main`**; staging should track **`staging`**.
+
+1. **Commit locally** on `main` (or merge your feature branch into `main` locally first).
+2. **Push only `staging`** so Railway staging redeploys — **do not push `main` yet** (that would deploy production immediately if it watches `main`):
+
+   ```bash
+   git checkout main
+   git push origin HEAD:staging
+   ```
+
+3. Open your **staging** app URL in Railway, smoke-test (login, critical flows, migrations if any).
+4. When it looks good, **ship to production**:
+
+   ```bash
+   git push origin main
+   ```
+
+**If `main` is already up to date on GitHub** and you only need staging to match it (e.g. after a teammate merged), use:
+
+```bash
+npm run staging:sync
+```
+
+That merges remote `main` into `staging` and pushes `staging`; it does **not** push `main`.
+
+**Avoid:** pushing `main` before you have validated the same commit on staging, unless it is an emergency hotfix you accept skipping staging for.
 
 ### One-time — GitHub
 
