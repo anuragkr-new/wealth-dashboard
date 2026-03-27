@@ -38,7 +38,11 @@ export type ParsedHoldingRow = {
 };
 
 function normHeader(h: string): string {
-  return h.trim().toLowerCase().replace(/\s+/g, " ");
+  return h
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\.+$/g, "");
 }
 
 function pickColumnIndex(
@@ -87,25 +91,41 @@ export function parseHoldingsCsv(text: string): ParseHoldingsCsvResult {
     };
   }
 
-  const headers = data[0].map((h) => String(h ?? ""));
-  const nameIdx = pickColumnIndex(headers, NAME_HEADERS);
-  const valueIdx = pickColumnIndex(headers, VALUE_HEADERS);
+  /** Groww / Google Sheets exports often have summary rows before the holdings table. */
+  let headerRowIdx = -1;
+  let nameIdx = -1;
+  let valueIdx = -1;
+  const noteIdx: Record<string, number> = {};
 
-  if (nameIdx < 0 || valueIdx < 0) {
+  for (let i = 0; i < data.length - 1; i++) {
+    const headers = data[i].map((h) => String(h ?? ""));
+    const ni = pickColumnIndex(headers, NAME_HEADERS);
+    const vi = pickColumnIndex(headers, VALUE_HEADERS);
+    if (ni >= 0 && vi >= 0) {
+      headerRowIdx = i;
+      nameIdx = ni;
+      valueIdx = vi;
+      for (const { key, labels } of NOTE_HEADERS) {
+        const idx = pickColumnIndex(headers, labels);
+        if (idx >= 0) noteIdx[key] = idx;
+      }
+      break;
+    }
+  }
+
+  if (headerRowIdx < 0 || nameIdx < 0 || valueIdx < 0) {
+    const sample = data
+      .slice(0, 5)
+      .map((row) => row.filter(Boolean).join(" | "))
+      .join(" · ");
     return {
       ok: false,
-      error: `Could not find name and value columns. Expected headers like: ${NAME_HEADERS.slice(0, 4).join(", ")} and ${VALUE_HEADERS.slice(0, 4).join(", ")}. Found: ${headers.filter(Boolean).join(" | ")}`,
+      error: `Could not find a holdings header row with name + value columns (e.g. Scheme Name, Current Value). First rows: ${sample || "(empty)"}`,
     };
   }
 
-  const noteIdx: Record<string, number> = {};
-  for (const { key, labels } of NOTE_HEADERS) {
-    const idx = pickColumnIndex(headers, labels);
-    if (idx >= 0) noteIdx[key] = idx;
-  }
-
   const rows: ParsedHoldingRow[] = [];
-  for (let r = 1; r < data.length; r++) {
+  for (let r = headerRowIdx + 1; r < data.length; r++) {
     if (rows.length >= CSV_IMPORT_MAX_ROWS) {
       return {
         ok: false,
