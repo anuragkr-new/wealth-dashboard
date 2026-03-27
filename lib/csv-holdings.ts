@@ -15,6 +15,7 @@ const NAME_HEADERS = [
 
 const VALUE_HEADERS = [
   "current value",
+  "current portfolio value",
   "market value",
   "current market value",
   "value",
@@ -47,17 +48,49 @@ function normHeader(h: string): string {
 
 function pickColumnIndex(
   headers: string[],
-  candidates: string[]
+  candidates: string[],
+  mode: "exact" | "exactOrContains" = "exact"
 ): number {
   const normalized = headers.map(normHeader);
   for (const c of candidates) {
     const i = normalized.indexOf(c);
     if (i >= 0) return i;
   }
+  if (mode === "exactOrContains") {
+    for (const c of candidates) {
+      if (c.length < 5) continue;
+      const i = normalized.findIndex((h) => h.includes(c));
+      if (i >= 0) return i;
+    }
+  }
   return -1;
 }
 
+function detectDelimiter(text: string): string {
+  const line =
+    text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) ?? "";
+  if (!line) return ",";
+  const tab = (line.match(/\t/g) ?? []).length;
+  const comma = (line.match(/,/g) ?? []).length;
+  const semi = (line.match(/;/g) ?? []).length;
+  const m = Math.max(tab, comma, semi);
+  if (m === 0) return ",";
+  if (tab === m) return "\t";
+  if (semi === m) return ";";
+  return ",";
+}
+
+function stripBom(text: string): string {
+  let t = text;
+  if (t.charCodeAt(0) === 0xfeff) t = t.slice(1);
+  return t.replace(/^\uFEFF+/, "");
+}
+
 export function parseInrNumber(raw: string): number | null {
+  if (/%/.test(raw)) return null;
   const s = raw
     .replace(/₹/g, "")
     .replace(/,/g, "")
@@ -73,9 +106,12 @@ export type ParseHoldingsCsvResult =
   | { ok: false; error: string };
 
 export function parseHoldingsCsv(text: string): ParseHoldingsCsvResult {
-  const parsed = Papa.parse<string[]>(text, {
+  const raw = stripBom(text);
+  const delimiter = detectDelimiter(raw);
+  const parsed = Papa.parse<string[]>(raw, {
     header: false,
     skipEmptyLines: "greedy",
+    delimiter,
   });
 
   if (parsed.errors.length > 0) {
@@ -91,25 +127,61 @@ export function parseHoldingsCsv(text: string): ParseHoldingsCsvResult {
     };
   }
 
-  /** Groww / Google Sheets exports often have summary rows before the holdings table. */
-  let headerRowIdx = -1;
-  let nameIdx = -1;
-  let valueIdx = -1;
-  const noteIdx: Record<string, number> = {};
+  /**
+   * Groww / Google Sheets exports often have summary rows before the holdings table.
+   * Some sheets also have a generic two-column "Name","Value" row (personal details) that
+   * must not win over the real holdings header — prefer rows with more columns and
+   * scheme-style name headers.
+   */
+  type Candidate = {
+    rowIdx: number;
+    nameIdx: number;
+    valueIdx: number;
+    colCount: number;
+    nameHeader: string;
+    score: number;
+  };
+  const candidates: Candidate[] = [];
 
   for (let i = 0; i < data.length - 1; i++) {
     const headers = data[i].map((h) => String(h ?? ""));
-    const ni = pickColumnIndex(headers, NAME_HEADERS);
-    const vi = pickColumnIndex(headers, VALUE_HEADERS);
-    if (ni >= 0 && vi >= 0) {
-      headerRowIdx = i;
-      nameIdx = ni;
-      valueIdx = vi;
-      for (const { key, labels } of NOTE_HEADERS) {
-        const idx = pickColumnIndex(headers, labels);
-        if (idx >= 0) noteIdx[key] = idx;
-      }
-      break;
+    const nonEmpty = headers.filter((h) => h.trim()).length;
+    const ni = pickColumnIndex(headers, NAME_HEADERS, "exactOrContains");
+    const vi = pickColumnIndex(headers, VALUE_HEADERS, "exactOrContains");
+    if (ni < 0 || vi < 0 || ni === vi) continue;
+
+    const nh = normHeader(headers[ni] ?? "");
+    let score = nonEmpty;
+    if (nh === "scheme name" || nh.includes("scheme name")) score += 80;
+    else if (nh.includes("fund name")) score += 50;
+    else if (nh === "name" && nonEmpty <= 2) score -= 100;
+
+    candidates.push({
+      rowIdx: i,
+      nameIdx: ni,
+      valueIdx: vi,
+      colCount: nonEmpty,
+      nameHeader: nh,
+      score,
+    });
+  }
+
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.colCount - a.colCount;
+  });
+
+  const best = candidates[0];
+  let headerRowIdx = best?.rowIdx ?? -1;
+  let nameIdx = best?.nameIdx ?? -1;
+  let valueIdx = best?.valueIdx ?? -1;
+  const noteIdx: Record<string, number> = {};
+
+  if (best) {
+    const headers = data[headerRowIdx].map((h) => String(h ?? ""));
+    for (const { key, labels } of NOTE_HEADERS) {
+      const idx = pickColumnIndex(headers, labels, "exact");
+      if (idx >= 0) noteIdx[key] = idx;
     }
   }
 

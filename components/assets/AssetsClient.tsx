@@ -78,8 +78,11 @@ export function AssetsClient() {
   const load = useCallback((opts?: { showSpinner?: boolean }) => {
     const showSpinner = opts?.showSpinner !== false;
     if (showSpinner) setLoading(true);
-    fetch("/api/categories")
-      .then((r) => r.json())
+    return fetch("/api/categories")
+      .then((r) => {
+        if (!r.ok) throw new Error(r.statusText || "Could not load categories");
+        return r.json();
+      })
       .then(setCategories)
       .finally(() => {
         if (showSpinner) setLoading(false);
@@ -178,7 +181,26 @@ export function AssetsClient() {
         method: "POST",
         body: fd,
       });
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: {
+        error?: string;
+        created?: number;
+        skipped?: number;
+        errors?: string[];
+      } = {};
+      try {
+        if (rawText) data = JSON.parse(rawText) as typeof data;
+      } catch {
+        toast({
+          title: "Import failed",
+          description:
+            (rawText && rawText.slice(0, 240)) ||
+            res.statusText ||
+            "Bad response from server",
+          variant: "destructive",
+        });
+        return;
+      }
       if (!res.ok) {
         toast({
           title: "Import failed",
@@ -193,11 +215,24 @@ export function AssetsClient() {
           : "";
       toast({
         title: "CSV imported",
-        description: `${data.created} created${data.skipped ? `, ${data.skipped} skipped` : ""}${extra}`,
+        description: `${data.created ?? 0} created${data.skipped ? `, ${data.skipped} skipped` : ""}${extra}`,
       });
       setCsvFile(null);
       if (csvInputRef.current) csvInputRef.current.value = "";
-      load({ showSpinner: false });
+      try {
+        await load({ showSpinner: false });
+      } catch {
+        toast({
+          title: "Holdings saved — list refresh failed",
+          description: "Reload the page to see updated assets.",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Import failed",
+        description: err instanceof Error ? err.message : "Network error",
+        variant: "destructive",
+      });
     } finally {
       setCsvImporting(false);
     }
