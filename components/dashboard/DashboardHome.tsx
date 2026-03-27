@@ -12,6 +12,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from "recharts";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,13 +27,20 @@ import { FadeIn, Stagger, StaggerItem } from "@/components/motion/FadeIn";
 import { cn, formatINR } from "@/lib/utils";
 
 const CHART_ACCENT = "#0052FF";
+/** Distinct hues for allocation mix (cycles if more categories than slots). */
 const PIE_COLORS = [
-  "#0052FF",
-  "#4D7CFF",
-  "#3b82f6",
-  "#6366f1",
-  "#8b5cf6",
-  "#a855f7",
+  "#2563eb",
+  "#059669",
+  "#d97706",
+  "#dc2626",
+  "#7c3aed",
+  "#0891b2",
+  "#c026d3",
+  "#ca8a04",
+  "#ea580c",
+  "#4f46e5",
+  "#0d9488",
+  "#db2777",
 ];
 
 type DashboardPayload = {
@@ -182,7 +190,11 @@ export function DashboardHome() {
 
   const pieData = categories
     .filter((c) => c.categoryTotal > 0)
-    .map((c) => ({ name: c.name, value: c.categoryTotal }));
+    .map((c, i) => ({
+      name: c.name,
+      value: c.categoryTotal,
+      fill: PIE_COLORS[i % PIE_COLORS.length],
+    }));
 
   const milestonePct =
     activeMilestone && activeMilestone.targetAmount > 0
@@ -403,16 +415,33 @@ export function DashboardHome() {
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
-                      cy="50%"
-                      innerRadius={58}
-                      outerRadius={96}
+                      cy="45%"
+                      innerRadius={52}
+                      outerRadius={88}
                       paddingAngle={2}
                     >
-                      {pieData.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      {pieData.map((entry, i) => (
+                        <Cell
+                          key={`slice-${i}`}
+                          fill={entry.fill}
+                          stroke="var(--card)"
+                          strokeWidth={2}
+                        />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v) => formatINR(Number(v))} />
+                    <Tooltip
+                      formatter={(v) => formatINR(Number(v))}
+                      contentStyle={{
+                        borderRadius: "12px",
+                        border: "1px solid hsl(var(--border))",
+                        boxShadow: "0 10px 15px rgba(0,0,0,0.08)",
+                      }}
+                    />
+                    <Legend
+                      verticalAlign="bottom"
+                      layout="horizontal"
+                      wrapperStyle={{ paddingTop: 8, fontSize: 12 }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               )}
