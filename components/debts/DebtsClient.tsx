@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,8 +23,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { scheduleOutstandingAsOf } from "@/lib/loans";
 import { formatINR } from "@/lib/utils";
-import { parseLoanScheduleCsv, parseLoanScheduleXlsx } from "@/lib/loanParser";
+import {
+  parseLoanScheduleCsv,
+  parseLoanScheduleXlsx,
+  deriveLoanFromSchedule,
+  type ParsedScheduleRow,
+} from "@/lib/loanParser";
 import { toast } from "@/components/ui/use-toast";
 
 type LoanRow = {
@@ -57,16 +63,11 @@ export function DebtsClient() {
   const [updateCard, setUpdateCard] = useState<{ id: string; name: string } | null>(null);
   const [deleteLoanId, setDeleteLoanId] = useState<string | null>(null);
   const [scheduleLoanId, setScheduleLoanId] = useState<string | null>(null);
-  const [previewRows, setPreviewRows] = useState<
-    Array<{
-      month: number;
-      year: number;
-      emiAmount: number;
-      principalComponent: number;
-      interestComponent: number;
-      outstandingBalance: number;
-    }> | null
-  >(null);
+  const [previewRows, setPreviewRows] = useState<ParsedScheduleRow[] | null>(
+    null
+  );
+  const [newLoanScheduleRows, setNewLoanScheduleRows] =
+    useState<ParsedScheduleRow[] | null>(null);
 
   const [loanForm, setLoanForm] = useState({
     name: "",
@@ -80,6 +81,18 @@ export function DebtsClient() {
   });
   const [cardForm, setCardForm] = useState({ cardName: "", outstanding: "" });
   const [balanceInput, setBalanceInput] = useState("");
+
+  const newLoanOutstandingAsOfMonth = useMemo(() => {
+    if (!newLoanScheduleRows?.length) return null;
+    const d = new Date();
+    const principal = Number(loanForm.principalAmount);
+    return scheduleOutstandingAsOf(
+      newLoanScheduleRows,
+      d.getFullYear(),
+      d.getMonth() + 1,
+      principal > 0 ? principal : undefined
+    );
+  }, [newLoanScheduleRows, loanForm.principalAmount]);
 
   const load = useCallback(async () => {
     const [s, l, c] = await Promise.all([
@@ -98,6 +111,14 @@ export function DebtsClient() {
 
   async function createLoan(e: React.FormEvent) {
     e.preventDefault();
+    if (!newLoanScheduleRows?.length) {
+      toast({
+        title: "Upload a schedule file first",
+        description: "EMI, principal, tenure, and start date are taken from the file.",
+        variant: "destructive",
+      });
+      return;
+    }
     const res = await fetch("/api/debts/loans", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -117,11 +138,74 @@ export function DebtsClient() {
       return;
     }
     const loan = await res.json();
-    toast({ title: "Loan created — upload amortization schedule" });
+    const schedRes = await fetch(`/api/debts/loans/${loan.id}/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entries: newLoanScheduleRows,
+        replace: true,
+      }),
+    });
+    if (!schedRes.ok) {
+      toast({
+        title: "Loan saved — schedule import failed",
+        description: "Upload the schedule from the loan card.",
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: "Loan and amortisation schedule saved" });
+    }
     setLoanOpen(false);
-    setScheduleLoanId(loan.id);
+    setNewLoanScheduleRows(null);
+    setScheduleLoanId(null);
     setPreviewRows(null);
+    setLoanForm({
+      name: "",
+      lender: "",
+      principalAmount: "",
+      interestRate: "0",
+      tenureMonths: "",
+      startDate: "",
+      emiAmount: "",
+      notes: "",
+    });
     load();
+  }
+
+  async function onNewLoanScheduleFile(file: File) {
+    try {
+      let rows: ParsedScheduleRow[];
+      if (file.name.endsWith(".csv")) {
+        const text = await file.text();
+        rows = parseLoanScheduleCsv(text);
+      } else {
+        const buf = await file.arrayBuffer();
+        rows = parseLoanScheduleXlsx(buf);
+      }
+      const derived = deriveLoanFromSchedule(rows);
+      if (!derived) {
+        throw new Error("No valid rows in file");
+      }
+      setNewLoanScheduleRows(rows);
+      setLoanForm((s) => ({
+        ...s,
+        principalAmount: String(derived.principalAmount),
+        interestRate: String(derived.interestRate),
+        tenureMonths: String(derived.tenureMonths),
+        startDate: derived.startDate,
+        emiAmount: String(derived.emiAmount),
+      }));
+      toast({
+        title: "Schedule loaded",
+        description: `${rows.length} rows — add a loan name and save.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Could not read schedule",
+        description: String(err),
+        variant: "destructive",
+      });
+    }
   }
 
   async function onScheduleFile(file: File) {
@@ -207,7 +291,22 @@ export function DebtsClient() {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Loans</h2>
-          <Button onClick={() => setLoanOpen(true)}>
+          <Button
+            onClick={() => {
+              setNewLoanScheduleRows(null);
+              setLoanForm({
+                name: "",
+                lender: "",
+                principalAmount: "",
+                interestRate: "0",
+                tenureMonths: "",
+                startDate: "",
+                emiAmount: "",
+                notes: "",
+              });
+              setLoanOpen(true);
+            }}
+          >
             <Plus className="mr-1 h-4 w-4" />
             Add loan
           </Button>
@@ -325,40 +424,99 @@ export function DebtsClient() {
         </Card>
       </section>
 
-      <Dialog open={loanOpen} onOpenChange={setLoanOpen}>
+      <Dialog
+        open={loanOpen}
+        onOpenChange={(open) => {
+          setLoanOpen(open);
+          if (!open) {
+            setNewLoanScheduleRows(null);
+          }
+        }}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <form onSubmit={createLoan}>
             <DialogHeader>
               <DialogTitle>Add loan</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-2 py-4">
-              {(
-                [
-                  ["name", "Loan name"],
-                  ["lender", "Lender"],
-                  ["principalAmount", "Principal"],
-                  ["interestRate", "Interest % p.a."],
-                  ["tenureMonths", "Tenure (months)"],
-                  ["startDate", "Start date", "date"],
-                  ["emiAmount", "EMI"],
-                  ["notes", "Notes"],
-                ] as const
-              ).map(([key, label, type]) => (
-                <div key={key}>
-                  <Label>{label}</Label>
-                  <Input
-                    type={type === "date" ? "date" : "text"}
-                    required={key !== "lender" && key !== "notes"}
-                    value={(loanForm as Record<string, string>)[key]}
-                    onChange={(e) =>
-                      setLoanForm((s) => ({ ...s, [key]: e.target.value }))
-                    }
-                  />
+            <div className="grid gap-3 py-4">
+              <div>
+                <Label>Amortisation file (CSV or Excel)</Label>
+                <Input
+                  type="file"
+                  accept=".csv,.xlsx,.xls,text/csv"
+                  className="mt-1"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void onNewLoanScheduleFile(f);
+                  }}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  EMI, opening principal, tenure, and start date are read from this
+                  file (see README). Interest % is set to 0 unless your sheet
+                  includes columns we can extend later.
+                </p>
+              </div>
+              {newLoanScheduleRows && (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <p className="font-medium text-slate-700">From file</p>
+                  <ul className="mt-2 grid gap-1 text-slate-600">
+                    <li>
+                      Opening principal:{" "}
+                      <span className="font-mono tabular-nums">
+                        {formatINR(Number(loanForm.principalAmount) || 0)}
+                      </span>
+                    </li>
+                    <li>
+                      EMI:{" "}
+                      <span className="font-mono tabular-nums">
+                        {formatINR(Number(loanForm.emiAmount) || 0)}
+                      </span>
+                    </li>
+                    <li>
+                      Outstanding (this calendar month):{" "}
+                      <span className="font-mono tabular-nums">
+                        {formatINR(newLoanOutstandingAsOfMonth ?? 0)}
+                      </span>
+                    </li>
+                    <li>Tenure: {loanForm.tenureMonths} months</li>
+                    <li>Start date: {loanForm.startDate}</li>
+                    <li>Schedule rows: {newLoanScheduleRows.length}</li>
+                  </ul>
                 </div>
-              ))}
+              )}
+              <div>
+                <Label>Loan name</Label>
+                <Input
+                  required
+                  value={loanForm.name}
+                  onChange={(e) =>
+                    setLoanForm((s) => ({ ...s, name: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>Lender (optional)</Label>
+                <Input
+                  value={loanForm.lender}
+                  onChange={(e) =>
+                    setLoanForm((s) => ({ ...s, lender: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>Notes (optional)</Label>
+                <Input
+                  value={loanForm.notes}
+                  onChange={(e) =>
+                    setLoanForm((s) => ({ ...s, notes: e.target.value }))
+                  }
+                />
+              </div>
             </div>
             <DialogFooter>
-              <Button type="submit">Save</Button>
+              <Button type="submit" disabled={!newLoanScheduleRows?.length}>
+                Save loan &amp; schedule
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

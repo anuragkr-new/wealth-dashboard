@@ -20,7 +20,12 @@ export async function calculateNetWorth(asOf: Date = new Date()): Promise<NetWor
 
   let loanOutstanding = 0;
   for (const loan of loans) {
-    loanOutstanding += scheduleOutstandingAsOf(loan.scheduleEntries, cy, cm);
+    loanOutstanding += scheduleOutstandingAsOf(
+      loan.scheduleEntries,
+      cy,
+      cm,
+      loan.principalAmount
+    );
   }
 
   const ccAgg = await prisma.creditCardDebt.aggregate({

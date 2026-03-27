@@ -4,6 +4,8 @@ import * as XLSX from "xlsx";
 export type ParsedScheduleRow = {
   month: number;
   year: number;
+  /** Day of month for start date (1–31); 1 if only month/year was available */
+  day: number;
   emiAmount: number;
   principalComponent: number;
   interestComponent: number;
@@ -26,22 +28,53 @@ function findColumn(
   return undefined;
 }
 
-function parseMonthDate(val: string | number | Date): { month: number; year: number } | null {
+export function parseScheduleDate(
+  val: string | number | Date
+): { year: number; month: number; day: number } | null {
   if (val instanceof Date && !isNaN(val.getTime())) {
-    return { month: val.getMonth() + 1, year: val.getFullYear() };
+    return {
+      year: val.getFullYear(),
+      month: val.getMonth() + 1,
+      day: val.getDate(),
+    };
   }
   const s = String(val).trim();
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (iso) {
-    return { year: Number(iso[1]), month: Number(iso[2]) };
+    return {
+      year: Number(iso[1]),
+      month: Number(iso[2]),
+      day: Number(iso[3]),
+    };
   }
   const my = /^(\d{1,2})[\/\-](\d{4})$/.exec(s);
   if (my) {
-    return { month: Number(my[1]), year: Number(my[2]) };
+    return { month: Number(my[1]), year: Number(my[2]), day: 1 };
   }
   const ym = /^(\d{4})[\/\-](\d{1,2})$/.exec(s);
   if (ym) {
-    return { year: Number(ym[1]), month: Number(ym[2]) };
+    return { year: Number(ym[1]), month: Number(ym[2]), day: 1 };
+  }
+  const threePart = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(s);
+  if (threePart) {
+    const p1 = Number(threePart[1]);
+    const p2 = Number(threePart[2]);
+    const y = Number(threePart[3]);
+    let month: number;
+    let day: number;
+    if (p1 > 12) {
+      day = p1;
+      month = p2;
+    } else if (p2 > 12) {
+      month = p1;
+      day = p2;
+    } else {
+      month = p1;
+      day = p2;
+    }
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return { year: y, month, day };
+    }
   }
   return null;
 }
@@ -69,7 +102,7 @@ export function parseLoanScheduleCsv(text: string): ParsedScheduleRow[] {
     "payment date",
     "due date",
   ]);
-  const colEmi = findColumn(headers, ["emi", "installment", "payment"]);
+  const colEmi = findColumn(headers, ["emi", "installment"]);
   const colPrin = findColumn(headers, ["principal", "principle"]);
   const colInt = findColumn(headers, ["interest"]);
   const colBal = findColumn(headers, [
@@ -88,11 +121,12 @@ export function parseLoanScheduleCsv(text: string): ParsedScheduleRow[] {
   for (const row of parsed.data) {
     const rawDate = row[colDate];
     if (rawDate == null || rawDate === "") continue;
-    const md = parseMonthDate(rawDate);
+    const md = parseScheduleDate(rawDate);
     if (!md) continue;
     rows.push({
       month: md.month,
       year: md.year,
+      day: md.day,
       emiAmount: colEmi ? num(row[colEmi]) : 0,
       principalComponent: colPrin ? num(row[colPrin]) : 0,
       interestComponent: colInt ? num(row[colInt]) : 0,
@@ -115,15 +149,17 @@ export function parseLoanScheduleXlsx(buffer: ArrayBuffer): ParsedScheduleRow[] 
     "date",
     "month/date",
     "payment date",
+    "due date",
   ]);
-  const colEmi = findColumn(headers, ["emi", "installment", "payment"]);
-  const colPrin = findColumn(headers, ["principal"]);
+  const colEmi = findColumn(headers, ["emi", "installment"]);
+  const colPrin = findColumn(headers, ["principal", "principle"]);
   const colInt = findColumn(headers, ["interest"]);
   const colBal = findColumn(headers, [
     "outstanding",
     "balance",
     "closing balance",
     "balance outstanding",
+    "os",
   ]);
 
   if (!colDate || !colBal) {
@@ -136,12 +172,13 @@ export function parseLoanScheduleXlsx(buffer: ArrayBuffer): ParsedScheduleRow[] 
     if (rawDate == null || rawDate === "") continue;
     const md =
       rawDate instanceof Date
-        ? { month: rawDate.getMonth() + 1, year: rawDate.getFullYear() }
-        : parseMonthDate(String(rawDate));
+        ? parseScheduleDate(rawDate)
+        : parseScheduleDate(String(rawDate));
     if (!md) continue;
     rows.push({
       month: md.month,
       year: md.year,
+      day: md.day,
       emiAmount: colEmi ? num(row[colEmi]) : 0,
       principalComponent: colPrin ? num(row[colPrin]) : 0,
       interestComponent: colInt ? num(row[colInt]) : 0,
@@ -149,4 +186,66 @@ export function parseLoanScheduleXlsx(buffer: ArrayBuffer): ParsedScheduleRow[] 
     });
   }
   return rows;
+}
+
+/**
+ * Derive loan header fields from a parsed amortisation schedule (sorted by date).
+ * Opening principal: first row closing balance + principal repaid that period when principal column exists.
+ * EMI: average of non-zero EMI column, else median of month-on-month balance drops.
+ */
+export function deriveLoanFromSchedule(
+  rows: ParsedScheduleRow[]
+): {
+  principalAmount: number;
+  emiAmount: number;
+  tenureMonths: number;
+  startDate: string;
+  interestRate: number;
+} | null {
+  if (!rows.length) return null;
+  const sorted = [...rows].sort((a, b) =>
+    a.year !== b.year
+      ? a.year - b.year
+      : a.month !== b.month
+        ? a.month - b.month
+        : a.day - b.day
+  );
+  const first = sorted[0];
+  const principalAmount =
+    first.principalComponent > 0
+      ? first.outstandingBalance + first.principalComponent
+      : first.outstandingBalance;
+
+  const emiFromCol = sorted.map((r) => r.emiAmount).filter((e) => e > 0);
+  let emiAmount = 0;
+  if (emiFromCol.length) {
+    emiAmount =
+      emiFromCol.reduce((sum, x) => sum + x, 0) / emiFromCol.length;
+  } else if (sorted.length >= 2) {
+    const deltas: number[] = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const d =
+        sorted[i - 1].outstandingBalance - sorted[i].outstandingBalance;
+      if (d > 0 && Number.isFinite(d)) deltas.push(d);
+    }
+    if (deltas.length) {
+      const sortedD = [...deltas].sort((a, b) => a - b);
+      emiAmount = sortedD[Math.floor(sortedD.length / 2)];
+    } else {
+      emiAmount = Math.abs(
+        sorted[0].outstandingBalance - sorted[1].outstandingBalance
+      );
+    }
+  }
+
+  const d = Math.min(31, Math.max(1, first.day));
+  const startDate = `${first.year}-${String(first.month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+  return {
+    principalAmount: Math.round(principalAmount * 100) / 100,
+    emiAmount: Math.round(emiAmount * 100) / 100,
+    tenureMonths: sorted.length,
+    startDate,
+    interestRate: 0,
+  };
 }

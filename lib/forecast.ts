@@ -15,9 +15,15 @@ export type ForecastPoint = {
 function loanOutstandingForMonth(
   entries: LoanScheduleEntry[],
   targetYear: number,
-  targetMonth: number
+  targetMonth: number,
+  principalAmount: number
 ): number {
-  return scheduleOutstandingAsOf(entries, targetYear, targetMonth);
+  return scheduleOutstandingAsOf(
+    entries,
+    targetYear,
+    targetMonth,
+    principalAmount
+  );
 }
 
 function categoryTotals(categories: (AssetCategory & { assets: { value: number }[] })[]) {
@@ -87,7 +93,12 @@ export async function computeForecast(options: {
 
     let loanLiab = 0;
     for (const loan of loans) {
-      loanLiab += loanOutstandingForMonth(loan.scheduleEntries, ty, tm);
+      loanLiab += loanOutstandingForMonth(
+        loan.scheduleEntries,
+        ty,
+        tm,
+        loan.principalAmount
+      );
     }
 
     const expectedAssets = projectAssets(cats, k, 1);

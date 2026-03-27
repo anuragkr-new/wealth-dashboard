@@ -19,7 +19,8 @@ export async function GET() {
     totalLoanOutstanding += scheduleOutstandingAsOf(
       loan.scheduleEntries,
       cy,
-      cm
+      cm,
+      loan.principalAmount
     );
   }
 

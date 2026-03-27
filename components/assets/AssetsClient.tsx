@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Plus, Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -57,6 +57,12 @@ export function AssetsClient() {
   const [editAsset, setEditAsset] = useState<Category["assets"][0] | null>(null);
   const [deleteAssetId, setDeleteAssetId] = useState<string | null>(null);
 
+  const [importCategoryId, setImportCategoryId] = useState("");
+  const [replaceCategory, setReplaceCategory] = useState(false);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
   const [assetForm, setAssetForm] = useState({
     name: "",
     categoryId: "",
@@ -69,16 +75,26 @@ export function AssetsClient() {
     growthRate: "0",
   });
 
-  const load = useCallback(() => {
+  const load = useCallback((opts?: { showSpinner?: boolean }) => {
+    const showSpinner = opts?.showSpinner !== false;
+    if (showSpinner) setLoading(true);
     fetch("/api/categories")
       .then((r) => r.json())
       .then(setCategories)
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (showSpinner) setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (categories.length === 0 || importCategoryId) return;
+    const mf = categories.find((c) => c.name === "Mutual Funds");
+    setImportCategoryId(mf?.id ?? categories[0].id);
+  }, [categories, importCategoryId]);
 
   async function submitAsset(e: React.FormEvent) {
     e.preventDefault();
@@ -143,6 +159,50 @@ export function AssetsClient() {
     load();
   }
 
+  async function submitCsvImport() {
+    if (!csvFile) {
+      toast({ title: "Choose a CSV file", variant: "destructive" });
+      return;
+    }
+    if (!importCategoryId) {
+      toast({ title: "Select a category", variant: "destructive" });
+      return;
+    }
+    setCsvImporting(true);
+    try {
+      const fd = new FormData();
+      fd.set("file", csvFile);
+      fd.set("categoryId", importCategoryId);
+      fd.set("replaceCategory", replaceCategory ? "true" : "false");
+      const res = await fetch("/api/assets/import-csv", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({
+          title: "Import failed",
+          description: data?.error ?? res.statusText,
+          variant: "destructive",
+        });
+        return;
+      }
+      const extra =
+        Array.isArray(data.errors) && data.errors.length > 0
+          ? ` · ${data.errors.slice(0, 2).join("; ")}`
+          : "";
+      toast({
+        title: "CSV imported",
+        description: `${data.created} created${data.skipped ? `, ${data.skipped} skipped` : ""}${extra}`,
+      });
+      setCsvFile(null);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+      load({ showSpinner: false });
+    } finally {
+      setCsvImporting(false);
+    }
+  }
+
   if (loading) return <p className="text-slate-500">Loading…</p>;
 
   return (
@@ -156,7 +216,7 @@ export function AssetsClient() {
             <GradientText>Assets</GradientText> & categories
           </>
         </PageHeader>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setAddCatOpen(true)}>
             <Plus className="mr-1 h-4 w-4" />
             Add category
@@ -178,6 +238,79 @@ export function AssetsClient() {
           </Button>
         </div>
       </div>
+
+      {categories.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Import from CSV</CardTitle>
+            <p className="text-sm text-slate-500">
+              Export holdings from Groww (or another broker) as CSV. Needs
+              columns for name (e.g. scheme name) and value (e.g. current
+              value). See README for details.
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+            <input
+              ref={csvInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+            />
+            <div className="grid gap-2">
+              <Label>File</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => csvInputRef.current?.click()}
+                >
+                  <Upload className="mr-1 h-4 w-4" />
+                  Choose CSV
+                </Button>
+                <span className="text-sm text-slate-600">
+                  {csvFile ? csvFile.name : "No file selected"}
+                </span>
+              </div>
+            </div>
+            <div className="grid gap-2 min-w-[200px]">
+              <Label>Category</Label>
+              <Select
+                value={importCategoryId}
+                onValueChange={setImportCategoryId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.icon} {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={replaceCategory}
+                onChange={(e) => setReplaceCategory(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              Replace all assets in this category
+            </label>
+            <Button
+              type="button"
+              disabled={!csvFile || csvImporting}
+              onClick={() => void submitCsvImport()}
+            >
+              {csvImporting ? "Importing…" : "Import"}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {categories.length === 0 ? (
         <Card>

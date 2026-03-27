@@ -18,7 +18,8 @@ export async function GET() {
     const currentOutstanding = scheduleOutstandingAsOf(
       loan.scheduleEntries,
       cy,
-      cm
+      cm,
+      loan.principalAmount
     );
     return {
       ...loan,
