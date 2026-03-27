@@ -34,7 +34,8 @@ export async function POST(req: Request) {
       replaceRaw === "on";
 
     const file = form.get("file");
-    if (!file || !(file instanceof File)) {
+    // Use Blob, not File: Node (e.g. Railway) may not define global `File`; uploads are still Blob.
+    if (file == null || typeof file === "string" || !(file instanceof Blob)) {
       return NextResponse.json({ error: "file is required" }, { status: 400 });
     }
 
