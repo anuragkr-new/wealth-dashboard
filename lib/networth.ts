@@ -7,14 +7,21 @@ export type NetWorthResult = {
   netWorth: number;
 };
 
-export async function calculateNetWorth(asOf: Date = new Date()): Promise<NetWorthResult> {
+export async function calculateNetWorth(
+  userId: string,
+  asOf: Date = new Date()
+): Promise<NetWorthResult> {
   const cy = asOf.getFullYear();
   const cm = asOf.getMonth() + 1;
 
-  const assetAgg = await prisma.asset.aggregate({ _sum: { value: true } });
+  const assetAgg = await prisma.asset.aggregate({
+    where: { category: { userId } },
+    _sum: { value: true },
+  });
   const grossAssets = assetAgg._sum.value ?? 0;
 
   const loans = await prisma.loan.findMany({
+    where: { userId },
     include: { scheduleEntries: true },
   });
 
@@ -29,6 +36,7 @@ export async function calculateNetWorth(asOf: Date = new Date()): Promise<NetWor
   }
 
   const ccAgg = await prisma.creditCardDebt.aggregate({
+    where: { userId },
     _sum: { outstanding: true },
   });
   const totalCredit = ccAgg._sum.outstanding ?? 0;

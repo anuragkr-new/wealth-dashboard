@@ -9,13 +9,36 @@ Personal wealth tracking (Next.js + Prisma + PostgreSQL).
 ```bash
 npm install
 npm run db:up          # Docker Postgres (optional if you already have Postgres)
-cp .env.example .env   # edit DATABASE_URL if needed
+cp .env.example .env   # set DATABASE_URL, AUTH_SECRET, AUTH_URL, AUTH_GOOGLE_*
 npx prisma migrate deploy
-npm run db:seed
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+After the first Google sign-in, optionally run `SEED_FOR_EMAIL=your@gmail.com npm run db:seed` for default asset categories (see below).
+
+Open [http://localhost:3000](http://localhost:3000). You are redirected to `/login` until you sign in with **Google**.
+
+### Authentication (Google OAuth)
+
+1. In [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Credentials**, create an **OAuth 2.0 Client ID** (Web application).
+2. Under **Authorized redirect URIs**, add exactly:
+   - Local: `http://localhost:3000/api/auth/callback/google`
+   - Staging: `https://<your-staging-host>/api/auth/callback/google`
+   - Production: `https://<your-prod-host>/api/auth/callback/google`
+3. Copy **Client ID** and **Client secret** into `.env` as `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
+4. Set `AUTH_SECRET` (e.g. `openssl rand -base64 32`) and `AUTH_URL` to your app’s public origin (no trailing slash), e.g. `http://localhost:3000`.
+
+Optional: `AUTH_GMAIL_ONLY=true` rejects sign-in unless the Google account email ends with `@gmail.com`.
+
+### Default asset categories (seed)
+
+Categories are **per user**. After you sign in once (so a `User` row exists), run:
+
+```bash
+SEED_FOR_EMAIL=you@gmail.com npm run db:seed
+```
+
+If `SEED_FOR_EMAIL` is unset, the seed script skips category creation and prints a short message.
 
 ## Import holdings from CSV (Assets)
 
@@ -99,7 +122,7 @@ After that, updates to staging usually come by merging `main` (see below).
 2. Name it e.g. **wealth-dashboard-staging**.
 3. In the service **Settings** → **Source** (or **Deploy**): connect the **same repo**, set **branch** to **`staging`** (not `main`). Enable automatic deploys on push.
 4. Add **PostgreSQL** for staging (new database plugin — do not share production DB). Set **`DATABASE_URL`** on the staging service to that database (variable reference is fine).
-5. Copy other env vars from production as needed (`ACCESS_COOKIE_*`, etc.); use different cookie values if staging should not share prod login.
+5. Copy auth env vars from production as needed (`AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_URL`). Use **separate** Google OAuth clients (or extra redirect URIs) per environment so each `AUTH_URL` matches the service URL.
 
 When you **push to `staging`**, Railway builds and runs `railway.toml`’s start command (`prisma migrate deploy` + `next start`). Run seed once against staging if you need data: `railway run --service <staging> npm run db:seed`.
 
@@ -137,12 +160,13 @@ That push needs a GitHub token with the **`workflow`** scope (or use GitHub Desk
 
 1. Create a **new project** → add **PostgreSQL** → add a service from **this GitHub repo** (or deploy with CLI).
 2. In the **web service**, set `DATABASE_URL` to reference Postgres (Railway can inject `${{ Postgres.DATABASE_URL }}` when you link the database).
-3. **Build command:** `npx prisma generate && npm run build` (default Nixpacks often runs `npm run build` — already includes `prisma generate`).
-4. **Start command:** `npx prisma migrate deploy && npm run start`
-5. After first deploy, run seed once (Railway shell or local with prod URL):
+3. Set **`AUTH_SECRET`**, **`AUTH_URL`** (public Railway URL, no trailing slash), **`AUTH_GOOGLE_ID`**, **`AUTH_GOOGLE_SECRET`**, and add the matching **`/api/auth/callback/google`** redirect URI in Google Cloud for that URL.
+4. **Build command:** `npx prisma generate && npm run build` (default Nixpacks often runs `npm run build` — already includes `prisma generate`).
+5. **Start command:** `npx prisma migrate deploy && npm run start`
+6. After first deploy, sign in once with Google, then optionally seed categories for your account:
 
    ```bash
-   railway run npm run db:seed
+   SEED_FOR_EMAIL=you@gmail.com railway run npm run db:seed
    ```
 
 ## CLI quick link

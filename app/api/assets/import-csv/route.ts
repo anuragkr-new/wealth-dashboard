@@ -4,10 +4,14 @@ import {
   CSV_IMPORT_MAX_BYTES,
   parseHoldingsCsv,
 } from "@/lib/csv-holdings";
+import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   try {
     let form: FormData;
     try {
@@ -46,8 +50,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const category = await prisma.assetCategory.findUnique({
-      where: { id: categoryId },
+    const category = await prisma.assetCategory.findFirst({
+      where: { id: categoryId, userId },
     });
     if (!category) {
       return NextResponse.json({ error: "Category not found" }, { status: 404 });

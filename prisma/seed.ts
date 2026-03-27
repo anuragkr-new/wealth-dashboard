@@ -12,13 +12,37 @@ const defaults = [
 ];
 
 async function main() {
+  const email = process.env.SEED_FOR_EMAIL?.trim();
+  if (!email) {
+    console.log(
+      "Seed skipped: set SEED_FOR_EMAIL to the Google account email (must have signed in once so User exists)."
+    );
+    return;
+  }
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    console.warn(
+      `No User row for "${email}". Sign in with Google once, then run npm run db:seed again.`
+    );
+    return;
+  }
+
   for (const c of defaults) {
     await prisma.assetCategory.upsert({
-      where: { name: c.name },
-      create: c,
+      where: {
+        userId_name: { userId: user.id, name: c.name },
+      },
+      create: {
+        userId: user.id,
+        name: c.name,
+        icon: c.icon,
+        growthRate: c.growthRate,
+      },
       update: { icon: c.icon, growthRate: c.growthRate },
     });
   }
+  console.log(`Seeded default categories for ${email}.`);
 }
 
 main()

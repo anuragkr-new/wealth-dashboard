@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseMonthYear } from "@/lib/utils";
+import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,9 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ monthYear: string }> }
 ) {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const { monthYear } = await params;
   const parsed = parseMonthYear(monthYear);
   if (!parsed) {
@@ -15,7 +19,11 @@ export async function GET(
   }
   const plan = await prisma.monthlyPlan.findUnique({
     where: {
-      month_year: { month: parsed.month, year: parsed.year },
+      userId_month_year: {
+        userId,
+        month: parsed.month,
+        year: parsed.year,
+      },
     },
     include: { expenseItems: true },
   });
@@ -29,6 +37,9 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ monthYear: string }> }
 ) {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const { monthYear } = await params;
   const parsed = parseMonthYear(monthYear);
   if (!parsed) {
@@ -37,7 +48,11 @@ export async function PUT(
 
   const plan = await prisma.monthlyPlan.findUnique({
     where: {
-      month_year: { month: parsed.month, year: parsed.year },
+      userId_month_year: {
+        userId,
+        month: parsed.month,
+        year: parsed.year,
+      },
     },
   });
   if (!plan) {

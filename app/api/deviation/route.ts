@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const logs = await prisma.deviationLog.findMany({
+    where: { userId },
     orderBy: [{ year: "desc" }, { month: "desc" }],
   });
 
@@ -12,7 +17,11 @@ export async function GET() {
     logs.map(async (log) => {
       const plan = await prisma.monthlyPlan.findUnique({
         where: {
-          month_year: { month: log.month, year: log.year },
+          userId_month_year: {
+            userId,
+            month: log.month,
+            year: log.year,
+          },
         },
         include: { expenseItems: true },
       });

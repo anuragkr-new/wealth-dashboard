@@ -1,18 +1,26 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const milestones = await prisma.milestone.findMany({
+    where: { userId },
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json(milestones);
 }
 
 export async function POST(req: Request) {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const active = await prisma.milestone.findFirst({
-    where: { status: "active" },
+    where: { userId, status: "active" },
   });
   if (active) {
     return NextResponse.json(
@@ -32,6 +40,7 @@ export async function POST(req: Request) {
 
   const ms = await prisma.milestone.create({
     data: {
+      userId,
       name,
       targetAmount: Number(targetAmount),
       targetDate: new Date(targetDate),

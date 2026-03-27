@@ -7,13 +7,74 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Auth.js adapter + app user (same row)
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  assetCategories AssetCategory[]
+  monthlyPlans    MonthlyPlan[]
+  deviationLogs   DeviationLog[]
+  wealthSnapshots WealthSnapshot[]
+  loans           Loan[]
+  creditCardDebts CreditCardDebt[]
+  milestones      Milestone[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 model AssetCategory {
   id         String   @id @default(cuid())
-  name       String   @unique
+  name       String
   icon       String?
   growthRate Float    @default(0)
   createdAt  DateTime @default(now())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   assets     Asset[]
+
+  @@unique([userId, name])
+  @@index([userId])
 }
 
 model Asset {
@@ -25,6 +86,8 @@ model Asset {
   notes      String?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
+
+  @@index([categoryId])
 }
 
 model MonthlyPlan {
@@ -35,9 +98,12 @@ model MonthlyPlan {
   actualIncome   Float?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   expenseItems   ExpenseItem[]
 
-  @@unique([month, year])
+  @@unique([userId, month, year])
+  @@index([userId])
 }
 
 model ExpenseItem {
@@ -63,8 +129,11 @@ model DeviationLog {
   overallDeviation    Float
   notes               String?
   createdAt           DateTime @default(now())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([month, year])
+  @@unique([userId, month, year])
+  @@index([userId])
 }
 
 model WealthSnapshot {
@@ -75,8 +144,11 @@ model WealthSnapshot {
   grossAssets      Float
   totalLiabilities Float
   createdAt        DateTime @default(now())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([month, year])
+  @@unique([userId, month, year])
+  @@index([userId])
 }
 
 model Loan {
@@ -90,7 +162,11 @@ model Loan {
   emiAmount       Float
   notes           String?
   createdAt       DateTime            @default(now())
+  userId          String
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   scheduleEntries LoanScheduleEntry[]
+
+  @@index([userId])
 }
 
 model LoanScheduleEntry {
@@ -114,6 +190,10 @@ model CreditCardDebt {
   outstanding Float
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Milestone {
@@ -124,4 +204,8 @@ model Milestone {
   status       String    @default("active")
   achievedAt   DateTime?
   createdAt    DateTime  @default(now())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

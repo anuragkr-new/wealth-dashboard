@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const categories = await prisma.assetCategory.findMany({
+    where: { userId },
     include: {
       assets: true,
     },
@@ -18,6 +23,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const body = await req.json();
   const { name, icon, growthRate } = body;
   if (!name) {
@@ -25,6 +33,7 @@ export async function POST(req: Request) {
   }
   const cat = await prisma.assetCategory.create({
     data: {
+      userId,
       name,
       icon: icon ?? null,
       growthRate: growthRate != null ? Number(growthRate) : 0,

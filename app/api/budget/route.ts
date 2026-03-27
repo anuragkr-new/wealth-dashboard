@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const body = await req.json();
   const { month, year, plannedIncome, expenseItems } = body as {
     month: number;
@@ -25,7 +29,9 @@ export async function POST(req: Request) {
   }
 
   const existing = await prisma.monthlyPlan.findUnique({
-    where: { month_year: { month, year } },
+    where: {
+      userId_month_year: { userId, month, year },
+    },
   });
   if (existing) {
     return NextResponse.json(
@@ -36,6 +42,7 @@ export async function POST(req: Request) {
 
   const plan = await prisma.monthlyPlan.create({
     data: {
+      userId,
       month,
       year,
       plannedIncome: Number(plannedIncome),

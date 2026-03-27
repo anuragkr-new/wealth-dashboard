@@ -7,15 +7,19 @@ import {
   resolveMonthlyMutualFundInvestment,
 } from "@/lib/forecast";
 import { upsertCurrentWealthSnapshot } from "@/lib/snapshot";
+import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
 
-  await upsertCurrentWealthSnapshot(now);
+  await upsertCurrentWealthSnapshot(userId, now);
 
   const [
     networth,
@@ -27,21 +31,26 @@ export async function GET() {
     monthlyNetSaving,
     monthlyMutualFundFromBudget,
   ] = await Promise.all([
-    calculateNetWorth(now),
+    calculateNetWorth(userId, now),
     prisma.assetCategory.findMany({
+      where: { userId },
       include: { assets: true },
       orderBy: { name: "asc" },
     }),
     prisma.wealthSnapshot.findMany({
+      where: { userId },
       orderBy: [{ year: "asc" }, { month: "asc" }],
     }),
-    prisma.milestone.findFirst({ where: { status: "active" } }),
+    prisma.milestone.findFirst({
+      where: { userId, status: "active" },
+    }),
     prisma.monthlyPlan.findUnique({
-      where: { month_year: { month, year } },
+      where: { userId_month_year: { userId, month, year } },
       include: { expenseItems: true },
     }),
     prisma.wealthSnapshot.findFirst({
       where: {
+        userId,
         OR: [
           { year: { lt: year } },
           { AND: [{ year }, { month: { lt: month } }] },
@@ -49,8 +58,8 @@ export async function GET() {
       },
       orderBy: [{ year: "desc" }, { month: "desc" }],
     }),
-    resolveDefaultMonthlySaving(),
-    resolveMonthlyMutualFundInvestment(),
+    resolveDefaultMonthlySaving(userId),
+    resolveMonthlyMutualFundInvestment(userId),
   ]);
 
   let milestoneInsight: {
@@ -62,6 +71,7 @@ export async function GET() {
 
   if (activeMilestone) {
     milestoneInsight = await computeMilestoneTrajectory({
+      userId,
       targetAmount: activeMilestone.targetAmount,
       targetDate: activeMilestone.targetDate,
       monthlyNetSaving,

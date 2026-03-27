@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { loanRepaidPercent, scheduleOutstandingAsOf } from "@/lib/loans";
+import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const now = new Date();
   const cy = now.getFullYear();
   const cm = now.getMonth() + 1;
 
   const loans = await prisma.loan.findMany({
+    where: { userId },
     include: { scheduleEntries: true },
     orderBy: { createdAt: "desc" },
   });
@@ -32,6 +37,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const body = await req.json();
   const {
     name,
@@ -58,6 +66,7 @@ export async function POST(req: Request) {
   }
   const loan = await prisma.loan.create({
     data: {
+      userId,
       name,
       lender: lender ?? null,
       principalAmount: Number(principalAmount),

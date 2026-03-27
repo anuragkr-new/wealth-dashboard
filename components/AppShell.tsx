@@ -14,6 +14,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -31,13 +32,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  async function signOut() {
-    await fetch("/api/access", { method: "DELETE" });
-    router.push("/access");
+  async function onSignOut() {
+    await signOut({ callbackUrl: "/login" });
     router.refresh();
   }
 
-  if (pathname === "/access") {
+  if (pathname === "/login") {
     return (
       <div className="min-h-screen bg-background glow-accent">{children}</div>
     );
@@ -119,7 +119,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </p>
           <button
             type="button"
-            onClick={() => void signOut()}
+            onClick={() => void onSignOut()}
             className="w-full rounded-lg border border-white/15 px-3 py-2 text-left text-xs font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white"
           >
             Sign out

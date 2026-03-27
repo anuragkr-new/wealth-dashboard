@@ -1,43 +1,55 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  ACCESS_COOKIE_NAME,
-  ACCESS_COOKIE_VALUE,
-} from "@/lib/access-config";
+import { auth } from "@/auth";
 
-function isPublicPath(pathname: string): boolean {
-  if (pathname.startsWith("/_next")) return true;
-  if (pathname === "/favicon.ico") return true;
-  if (pathname === "/access" || pathname.startsWith("/access/")) return true;
-  if (pathname === "/api/access") return true;
-  return false;
-}
-
-function hasAccess(request: NextRequest): boolean {
+function isPublicAsset(pathname: string): boolean {
   return (
-    request.cookies.get(ACCESS_COOKIE_NAME)?.value === ACCESS_COOKIE_VALUE
+    pathname.startsWith("/_next") ||
+    pathname === "/favicon.ico" ||
+    pathname.startsWith("/_next/static") ||
+    pathname.startsWith("/_next/image")
   );
 }
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
 
-  if (isPublicPath(pathname)) {
+  if (isPublicAsset(pathname)) {
     return NextResponse.next();
   }
 
-  if (hasAccess(request)) {
+  if (pathname === "/access" || pathname.startsWith("/access/")) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  if (pathname.startsWith("/api/auth")) {
     return NextResponse.next();
   }
 
   if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!req.auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
   }
 
-  const url = request.nextUrl.clone();
-  url.pathname = "/access";
-  url.searchParams.set("from", pathname);
-  return NextResponse.redirect(url);
-}
+  if (pathname === "/login") {
+    if (req.auth) {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
+    return NextResponse.next();
+  }
+
+  if (!req.auth) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("from", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
+});
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],

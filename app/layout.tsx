@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Calistoga, JetBrains_Mono } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
+import { Providers } from "@/components/Providers";
 import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 
@@ -37,7 +38,9 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${calistoga.variable} ${jetbrainsMono.variable} font-sans`}
       >
-        <AppShell>{children}</AppShell>
+        <Providers>
+          <AppShell>{children}</AppShell>
+        </Providers>
         <Toaster />
       </body>
     </html>

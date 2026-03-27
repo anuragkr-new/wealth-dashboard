@@ -7,12 +7,16 @@ import {
   resolveMonthlyMutualFundInvestment,
 } from "@/lib/forecast";
 import { monthsBetween } from "@/lib/utils";
+import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const userId = await requireUserId();
+  if (!userId) return unauthorizedJson();
+
   const active = await prisma.milestone.findFirst({
-    where: { status: "active" },
+    where: { userId, status: "active" },
   });
   if (!active) {
     return NextResponse.json({ error: "No active milestone" }, { status: 404 });
@@ -23,13 +27,14 @@ export async function GET(req: Request) {
   const [monthlyNetSaving, monthlyMutualFundFromBudget] = await Promise.all([
     override != null
       ? Promise.resolve(Number(override))
-      : resolveDefaultMonthlySaving(),
-    resolveMonthlyMutualFundInvestment(),
+      : resolveDefaultMonthlySaving(userId),
+    resolveMonthlyMutualFundInvestment(userId),
   ]);
 
   const saving = Number.isFinite(monthlyNetSaving) ? monthlyNetSaving : 0;
 
   const trajectory = await computeMilestoneTrajectory({
+    userId,
     targetAmount: active.targetAmount,
     targetDate: active.targetDate,
     monthlyNetSaving: saving,
@@ -45,6 +50,7 @@ export async function GET(req: Request) {
   const horizon = Math.max(60, delta + 6, 12);
 
   const chartPoints = await computeForecast({
+    userId,
     horizonMonths: horizon,
     monthlyNetSaving: saving,
     monthlyMutualFundInvestment: monthlyMutualFundFromBudget,
