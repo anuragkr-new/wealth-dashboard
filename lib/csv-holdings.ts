@@ -172,9 +172,9 @@ export function parseHoldingsCsv(text: string): ParseHoldingsCsvResult {
   });
 
   const best = candidates[0];
-  let headerRowIdx = best?.rowIdx ?? -1;
-  let nameIdx = best?.nameIdx ?? -1;
-  let valueIdx = best?.valueIdx ?? -1;
+  const headerRowIdx = best?.rowIdx ?? -1;
+  const nameIdx = best?.nameIdx ?? -1;
+  const valueIdx = best?.valueIdx ?? -1;
   const noteIdx: Record<string, number> = {};
 
   if (best) {
