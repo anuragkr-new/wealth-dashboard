@@ -25,7 +25,9 @@ model User {
   wealthSnapshots WealthSnapshot[]
   loans           Loan[]
   creditCardDebts CreditCardDebt[]
-  milestones      Milestone[]
+  milestones       Milestone[]
+  statementImports StatementImport[]
+  expenseImportLines ExpenseImportLine[]
 }
 
 model Account {
@@ -107,13 +109,14 @@ model MonthlyPlan {
 }
 
 model ExpenseItem {
-  id             String      @id @default(cuid())
+  id             String              @id @default(cuid())
   label          String
   plannedAmount  Float
   actualAmount   Float?
-  plan           MonthlyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan           MonthlyPlan         @relation(fields: [planId], references: [id], onDelete: Cascade)
   planId         String
-  createdAt      DateTime    @default(now())
+  createdAt      DateTime            @default(now())
+  importLines    ExpenseImportLine[]
 }
 
 model DeviationLog {
@@ -209,3 +212,54 @@ model Milestone {
 
   @@index([userId])
 }
+
+enum StatementSource {
+  PHONEPE
+  ICICI_BANK
+  CREDIT_CARD
+}
+
+enum ImportedTxnKind {
+  EXPENSE
+  TRANSFER
+  INCOME
+  IGNORE
+}
+
+model StatementImport {
+  id         String          @id @default(cuid())
+  userId     String
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source     StatementSource
+  fileName   String
+  rowCount   Int             @default(0)
+  inserted   Int             @default(0)
+  skippedDup Int             @default(0)
+  createdAt  DateTime        @default(now())
+  lines      ExpenseImportLine[]
+
+  @@index([userId])
+}
+
+model ExpenseImportLine {
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  importId      String?
+  importBatch   StatementImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  txnDate       DateTime
+  amount        Float
+  description   String
+  source        StatementSource
+  kind          ImportedTxnKind  @default(EXPENSE)
+  dedupeKey     String
+  externalRef   String?
+  expenseItemId String?
+  expenseItem   ExpenseItem?     @relation(fields: [expenseItemId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, txnDate])
+  @@index([expenseItemId])
+}
+

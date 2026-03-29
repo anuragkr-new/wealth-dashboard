@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatINR, monthYearKey, addMonths } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatementImportTab } from "@/components/budget/StatementImportTab";
 
 type Plan = {
   id: string;
@@ -123,256 +125,272 @@ export function BudgetClient() {
         </div>
       </div>
 
-      {!plan ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-4 py-10">
-            <p className="text-slate-500">No plan for this month.</p>
-            <Button onClick={() => setCreateOpen(true)}>Create plan</Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Income</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-4">
-              <div>
-                <Label>Planned</Label>
-                <Input
-                  type="number"
-                  defaultValue={plan.plannedIncome}
-                  onBlur={(e) =>
-                    savePlan({
-                      ...plan,
-                      plannedIncome: Number(e.target.value),
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <Label>Actual</Label>
-                <Input
-                  type="number"
-                  defaultValue={plan.actualIncome ?? ""}
-                  placeholder="After month end"
-                  onBlur={(e) =>
-                    savePlan({
-                      ...plan,
-                      actualIncome: e.target.value === "" ? null : Number(e.target.value),
-                    })
-                  }
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Expenses</CardTitle>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  savePlan({
-                    ...plan,
-                    expenseItems: [
-                      ...plan.expenseItems,
-                      {
-                        id: "",
-                        label: "New",
-                        plannedAmount: 0,
-                        actualAmount: null,
-                      },
-                    ],
-                  })
-                }
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                Add line
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-slate-500">
-                    <th className="p-2">Label</th>
-                    <th className="p-2">Planned</th>
-                    <th className="p-2">Actual</th>
-                    <th className="p-2">Deviation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.expenseItems.map((row) => {
-                    const dev =
-                      row.actualAmount != null
-                        ? row.actualAmount - row.plannedAmount
-                        : null;
-                    return (
-                      <tr key={row.id || row.label} className="border-b">
-                        <td className="p-2">
-                          <Input
-                            defaultValue={row.label}
-                            onBlur={(e) =>
-                              savePlan({
-                                ...plan,
-                                expenseItems: plan.expenseItems.map((x) =>
-                                  x.id === row.id
-                                    ? { ...x, label: e.target.value }
-                                    : x
-                                ),
-                              })
-                            }
-                          />
-                        </td>
-                        <td className="p-2">
-                          <Input
-                            type="number"
-                            defaultValue={row.plannedAmount}
-                            onBlur={(e) =>
-                              savePlan({
-                                ...plan,
-                                expenseItems: plan.expenseItems.map((x) =>
-                                  x.id === row.id
-                                    ? {
-                                        ...x,
-                                        plannedAmount: Number(e.target.value),
-                                      }
-                                    : x
-                                ),
-                              })
-                            }
-                          />
-                        </td>
-                        <td className="p-2">
-                          <Input
-                            type="number"
-                            defaultValue={row.actualAmount ?? ""}
-                            onBlur={(e) =>
-                              savePlan({
-                                ...plan,
-                                expenseItems: plan.expenseItems.map((x) =>
-                                  x.id === row.id
-                                    ? {
-                                        ...x,
-                                        actualAmount:
-                                          e.target.value === ""
-                                            ? null
-                                            : Number(e.target.value),
-                                      }
-                                    : x
-                                ),
-                              })
-                            }
-                          />
-                        </td>
-                        <td
-                          className={`p-2 font-medium ${
-                            dev == null
-                              ? ""
-                              : dev >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                          }`}
-                        >
-                          {dev == null ? "—" : formatINR(dev)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2 text-sm sm:grid-cols-3">
-              {(() => {
-                const plannedExp = plan.expenseItems.reduce(
-                  (s, e) => s + e.plannedAmount,
-                  0
-                );
-                const actualExp = plan.expenseItems.every(
-                  (e) => e.actualAmount != null
-                )
-                  ? plan.expenseItems.reduce(
-                      (s, e) => s + (e.actualAmount ?? 0),
-                      0
-                    )
-                  : null;
-                const plannedNet = plan.plannedIncome - plannedExp;
-                const actualNet =
-                  plan.actualIncome != null && actualExp != null
-                    ? plan.actualIncome - actualExp
-                    : null;
-                const overall =
-                  actualNet != null ? actualNet - plannedNet : null;
-                return (
-                  <>
-                    <div>
-                      <p className="text-slate-500">Planned net saving</p>
-                      <p className="text-lg font-semibold">
-                        {formatINR(plannedNet)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Actual net saving</p>
-                      <p className="text-lg font-semibold">
-                        {actualNet != null ? formatINR(actualNet) : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Overall deviation</p>
-                      <p
-                        className={`text-lg font-semibold ${
-                          overall == null
-                            ? ""
-                            : overall >= 0
-                              ? "text-green-600"
-                              : "text-red-600"
-                        }`}
-                      >
-                        {overall != null ? formatINR(overall) : "—"}
-                      </p>
-                    </div>
-                  </>
-                );
-              })()}
-            </CardContent>
-          </Card>
-
-          {logged ? (
-            <p className="text-sm text-slate-500">Deviation already logged for this month.</p>
+      <Tabs defaultValue="plan" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="plan">Plan</TabsTrigger>
+          <TabsTrigger value="imports">Statement imports</TabsTrigger>
+        </TabsList>
+        <TabsContent value="plan" className="space-y-6">
+          {!plan ? (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-4 py-10">
+                <p className="text-slate-500">No plan for this month.</p>
+                <Button onClick={() => setCreateOpen(true)}>Create plan</Button>
+              </CardContent>
+            </Card>
           ) : (
-            <Button
-              disabled={
-                plan.actualIncome == null ||
-                plan.expenseItems.some((e) => e.actualAmount == null)
-              }
-              onClick={async () => {
-                const res = await fetch(`/api/budget/${monthKey}/actuals`, {
-                  method: "POST",
-                });
-                if (!res.ok) {
-                  const j = await res.json().catch(() => ({}));
-                  toast({
-                    title: j.error ?? "Lock failed",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-                toast({ title: "Deviation logged" });
-                load();
-              }}
-            >
-              Lock & log deviation
-            </Button>
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Income</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-4">
+                  <div>
+                    <Label>Planned</Label>
+                    <Input
+                      type="number"
+                      defaultValue={plan.plannedIncome}
+                      onBlur={(e) =>
+                        savePlan({
+                          ...plan,
+                          plannedIncome: Number(e.target.value),
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>Actual</Label>
+                    <Input
+                      type="number"
+                      defaultValue={plan.actualIncome ?? ""}
+                      placeholder="After month end"
+                      onBlur={(e) =>
+                        savePlan({
+                          ...plan,
+                          actualIncome: e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Expenses</CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      savePlan({
+                        ...plan,
+                        expenseItems: [
+                          ...plan.expenseItems,
+                          {
+                            id: "",
+                            label: "New",
+                            plannedAmount: 0,
+                            actualAmount: null,
+                          },
+                        ],
+                      })
+                    }
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add line
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-slate-500">
+                        <th className="p-2">Label</th>
+                        <th className="p-2">Planned</th>
+                        <th className="p-2">Actual</th>
+                        <th className="p-2">Deviation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plan.expenseItems.map((row) => {
+                        const dev =
+                          row.actualAmount != null
+                            ? row.actualAmount - row.plannedAmount
+                            : null;
+                        return (
+                          <tr key={row.id || row.label} className="border-b">
+                            <td className="p-2">
+                              <Input
+                                defaultValue={row.label}
+                                onBlur={(e) =>
+                                  savePlan({
+                                    ...plan,
+                                    expenseItems: plan.expenseItems.map((x) =>
+                                      x.id === row.id
+                                        ? { ...x, label: e.target.value }
+                                        : x
+                                    ),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                defaultValue={row.plannedAmount}
+                                onBlur={(e) =>
+                                  savePlan({
+                                    ...plan,
+                                    expenseItems: plan.expenseItems.map((x) =>
+                                      x.id === row.id
+                                        ? {
+                                            ...x,
+                                            plannedAmount: Number(e.target.value),
+                                          }
+                                        : x
+                                    ),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                defaultValue={row.actualAmount ?? ""}
+                                onBlur={(e) =>
+                                  savePlan({
+                                    ...plan,
+                                    expenseItems: plan.expenseItems.map((x) =>
+                                      x.id === row.id
+                                        ? {
+                                            ...x,
+                                            actualAmount:
+                                              e.target.value === ""
+                                                ? null
+                                                : Number(e.target.value),
+                                          }
+                                        : x
+                                    ),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td
+                              className={`p-2 font-medium ${
+                                dev == null
+                                  ? ""
+                                  : dev >= 0
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                              }`}
+                            >
+                              {dev == null ? "—" : formatINR(dev)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-2 text-sm sm:grid-cols-3">
+                  {(() => {
+                    const plannedExp = plan.expenseItems.reduce(
+                      (s, e) => s + e.plannedAmount,
+                      0
+                    );
+                    const actualExp = plan.expenseItems.every(
+                      (e) => e.actualAmount != null
+                    )
+                      ? plan.expenseItems.reduce(
+                          (s, e) => s + (e.actualAmount ?? 0),
+                          0
+                        )
+                      : null;
+                    const plannedNet = plan.plannedIncome - plannedExp;
+                    const actualNet =
+                      plan.actualIncome != null && actualExp != null
+                        ? plan.actualIncome - actualExp
+                        : null;
+                    const overall =
+                      actualNet != null ? actualNet - plannedNet : null;
+                    return (
+                      <>
+                        <div>
+                          <p className="text-slate-500">Planned net saving</p>
+                          <p className="text-lg font-semibold">
+                            {formatINR(plannedNet)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Actual net saving</p>
+                          <p className="text-lg font-semibold">
+                            {actualNet != null ? formatINR(actualNet) : "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Overall deviation</p>
+                          <p
+                            className={`text-lg font-semibold ${
+                              overall == null
+                                ? ""
+                                : overall >= 0
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                            }`}
+                          >
+                            {overall != null ? formatINR(overall) : "—"}
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+
+              {logged ? (
+                <p className="text-sm text-slate-500">Deviation already logged for this month.</p>
+              ) : (
+                <Button
+                  disabled={
+                    plan.actualIncome == null ||
+                    plan.expenseItems.some((e) => e.actualAmount == null)
+                  }
+                  onClick={async () => {
+                    const res = await fetch(`/api/budget/${monthKey}/actuals`, {
+                      method: "POST",
+                    });
+                    if (!res.ok) {
+                      const j = await res.json().catch(() => ({}));
+                      toast({
+                        title: j.error ?? "Lock failed",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    toast({ title: "Deviation logged" });
+                    load();
+                  }}
+                >
+                  Lock & log deviation
+                </Button>
+              )}
+            </>
           )}
-        </>
-      )}
+        </TabsContent>
+        <TabsContent value="imports">
+          <StatementImportTab
+            monthKey={monthKey}
+            plan={plan}
+            onReload={() => void load()}
+          />
+        </TabsContent>
+      </Tabs>
+
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
