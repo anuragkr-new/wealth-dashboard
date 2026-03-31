@@ -61,6 +61,29 @@ type Plan = {
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 export function BudgetClient() {
+  function normalizePlanPayload(raw: unknown): Plan | null {
+    if (!raw || typeof raw !== "object") return null;
+    const p = raw as Partial<Plan> & {
+      liquidityExpenses?: Array<{ id: string; label: string; amount: number; kind?: string }>;
+    };
+    const liquidityExpenses = Array.isArray(p.liquidityExpenses) ? p.liquidityExpenses : [];
+    const fixedFromLegacy = liquidityExpenses.filter((e) => e.kind === "FIXED");
+    const variableFromLegacy = liquidityExpenses.filter((e) => e.kind !== "FIXED");
+    return {
+      ...(p as Plan),
+      expenseItems: Array.isArray(p.expenseItems) ? p.expenseItems : [],
+      liquidityAccounts: Array.isArray(p.liquidityAccounts) ? p.liquidityAccounts : [],
+      liquidityReceivables: Array.isArray(p.liquidityReceivables)
+        ? p.liquidityReceivables
+        : [],
+      liquidityDebts: Array.isArray(p.liquidityDebts) ? p.liquidityDebts : [],
+      fixedExpenses: Array.isArray(p.fixedExpenses) ? p.fixedExpenses : fixedFromLegacy,
+      variableExpenses: Array.isArray(p.variableExpenses)
+        ? p.variableExpenses
+        : variableFromLegacy,
+    };
+  }
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const keyFromUrl = searchParams.get("month");
@@ -110,16 +133,27 @@ export function BudgetClient() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [p, d] = await Promise.all([
-      fetch(`/api/budget/${monthKey}`).then((r) => r.json()),
-      fetch(`/api/deviation`).then((r) => r.json()),
-    ]);
-    setPlan(p);
-    setLogged(
-      Array.isArray(d) &&
-        d.some((x: { month: number; year: number }) => x.month === month && x.year === year)
-    );
-    setLoading(false);
+    try {
+      const [p, d] = await Promise.all([
+        fetch(`/api/budget/${monthKey}`).then((r) => r.json()),
+        fetch(`/api/deviation`).then((r) => r.json()),
+      ]);
+      setPlan(normalizePlanPayload(p));
+      setLogged(
+        Array.isArray(d) &&
+          d.some((x: { month: number; year: number }) => x.month === month && x.year === year)
+      );
+    } catch {
+      setPlan(null);
+      setLogged(false);
+      toast({
+        title: "Could not load this month",
+        description: "Please refresh or try again shortly.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   }, [monthKey, month, year]);
 
   useEffect(() => {
@@ -173,7 +207,7 @@ export function BudgetClient() {
       toast({ title: "Save failed", variant: "destructive" });
       return;
     }
-    const updated = (await res.json()) as Plan;
+    const updated = normalizePlanPayload(await res.json());
     setPlan(updated);
     setSaveState("saved");
     setTimeout(() => setSaveState("idle"), 1800);
