@@ -131,11 +131,19 @@ export function DashboardHome() {
   useEffect(() => {
     fetch("/api/dashboard")
       .then((r) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H7',location:'components/dashboard/DashboardHome.tsx:useEffect:response',message:'Dashboard API response status',data:{status:r.status,ok:r.ok},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (!r.ok) throw new Error("Failed to load dashboard");
         return r.json();
       })
       .then(setData)
-      .catch((e) => setErr(e.message));
+      .catch((e) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H8',location:'components/dashboard/DashboardHome.tsx:useEffect:catch',message:'Dashboard load catch',data:{errorMessage:e instanceof Error?e.message:String(e)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        setErr(e.message);
+      });
   }, []);
 
   if (err) {

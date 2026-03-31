@@ -33,8 +33,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   async function onSignOut() {
-    await signOut({ callbackUrl: "/login" });
-    router.refresh();
+    // #region agent log
+    fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H11',location:'components/AppShell.tsx:onSignOut:start',message:'Signout started',data:{pathname},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    try {
+      await signOut({ callbackUrl: "/login" });
+      // #region agent log
+      fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H11',location:'components/AppShell.tsx:onSignOut:success',message:'Signout resolved',data:{pathname},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      router.refresh();
+    } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H11',location:'components/AppShell.tsx:onSignOut:catch',message:'Signout threw',data:{errorName:error instanceof Error?error.name:'unknown',errorMessage:error instanceof Error?error.message:String(error)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    }
   }
 
   if (pathname === "/login") {
