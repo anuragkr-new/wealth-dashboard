@@ -15,6 +15,11 @@ function isPublicAsset(pathname: string): boolean {
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
+  if (pathname.startsWith("/api/debts") || pathname === "/debts") {
+    // #region agent log
+    fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H3',location:'middleware.ts:auth',message:'Middleware auth state',data:{pathname,hasAuth:!!req.auth,hasUserId:!!req.auth?.user?.id},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }
 
   if (isPublicAsset(pathname)) {
     return NextResponse.next();
