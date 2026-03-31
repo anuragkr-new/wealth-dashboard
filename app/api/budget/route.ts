@@ -70,6 +70,7 @@ export async function POST(req: Request) {
       liquidityAccounts: true,
       liquidityReceivables: true,
       liquidityExpenses: true,
+      liquidityDebts: true,
     },
   });
 

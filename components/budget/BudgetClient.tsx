@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CheckCircle2, Loader2, Save, TriangleAlert, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -51,7 +51,14 @@ type Plan = {
     label: string;
     amount: number;
   }>;
+  liquidityDebts: Array<{
+    id: string;
+    label: string;
+    amount: number;
+  }>;
 };
+
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 export function BudgetClient() {
   const router = useRouter();
@@ -92,14 +99,7 @@ export function BudgetClient() {
 
   const [plan, setPlan] = useState<Plan | null>(null);
   const [activeTab, setActiveTab] = useState<"plan" | "liquidity" | "imports">("plan");
-  const [debtSummary, setDebtSummary] = useState<{
-    totalLoanOutstanding: number;
-    totalCreditCard: number;
-    totalLiabilities: number;
-  } | null>(null);
-  const [creditCards, setCreditCards] = useState<
-    Array<{ id: string; cardName: string; outstanding: number }>
-  >([]);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
   const [loading, setLoading] = useState(true);
   const [logged, setLogged] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -110,15 +110,11 @@ export function BudgetClient() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [p, d, debt, cards] = await Promise.all([
+    const [p, d] = await Promise.all([
       fetch(`/api/budget/${monthKey}`).then((r) => r.json()),
       fetch(`/api/deviation`).then((r) => r.json()),
-      fetch("/api/debts/summary").then((r) => r.json()),
-      fetch("/api/debts/credit-cards").then((r) => r.json()),
     ]);
     setPlan(p);
-    setDebtSummary(debt);
-    setCreditCards(Array.isArray(cards) ? cards : []);
     setLogged(
       Array.isArray(d) &&
         d.some((x: { month: number; year: number }) => x.month === month && x.year === year)
@@ -131,6 +127,8 @@ export function BudgetClient() {
   }, [load]);
 
   async function savePlan(next: Plan) {
+    setPlan(next);
+    setSaveState("saving");
     const res = await fetch(`/api/budget/${monthKey}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -153,6 +151,11 @@ export function BudgetClient() {
           label: e.label,
           amount: e.amount,
         })),
+        liquidityDebts: next.liquidityDebts.map((e) => ({
+          id: e.id,
+          label: e.label,
+          amount: e.amount,
+        })),
         fixedExpenses: next.fixedExpenses.map((e) => ({
           id: e.id,
           label: e.label,
@@ -165,9 +168,15 @@ export function BudgetClient() {
         })),
       }),
     });
-    if (!res.ok) toast({ title: "Save failed", variant: "destructive" });
-    else toast({ title: "Saved" });
-    load();
+    if (!res.ok) {
+      setSaveState("error");
+      toast({ title: "Save failed", variant: "destructive" });
+      return;
+    }
+    const updated = (await res.json()) as Plan;
+    setPlan(updated);
+    setSaveState("saved");
+    setTimeout(() => setSaveState("idle"), 1800);
   }
 
   if (loading) return <p className="text-slate-500">Loading…</p>;
@@ -176,6 +185,29 @@ export function BudgetClient() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-slate-900">Budget</h1>
+        <div className="flex items-center gap-2 text-sm">
+          {saveState === "saving" ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
+              <span className="text-slate-500">Saving…</span>
+            </>
+          ) : saveState === "saved" ? (
+            <>
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <span className="text-green-600">All changes saved</span>
+            </>
+          ) : saveState === "error" ? (
+            <>
+              <TriangleAlert className="h-4 w-4 text-red-600" />
+              <span className="text-red-600">Save failed</span>
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 text-slate-400" />
+              <span className="text-slate-400">Idle</span>
+            </>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={() => shift(-1)}>
             <ChevronLeft className="h-4 w-4" />
@@ -508,7 +540,7 @@ export function BudgetClient() {
                     <thead>
                       <tr className="border-b text-left text-slate-500">
                         <th className="p-2">Account/Bucket</th>
-                        <th className="p-2">Amount</th>
+                        <th className="p-2">Amount (₹)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -582,7 +614,7 @@ export function BudgetClient() {
                     <thead>
                       <tr className="border-b text-left text-slate-500">
                         <th className="p-2">Source</th>
-                        <th className="p-2">Amount</th>
+                        <th className="p-2">Amount (₹)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -625,25 +657,76 @@ export function BudgetClient() {
               </Card>
 
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>
-                    Debts (from Debts module){" "}
+                    Debts{" "}
                     <span className="text-base font-semibold text-slate-600">
-                      {formatINR(debtSummary?.totalCreditCard ?? 0)}
+                      {formatINR(
+                        plan.liquidityDebts.reduce((s, e) => s + e.amount, 0)
+                      )}
                     </span>
                   </CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      savePlan({
+                        ...plan,
+                        liquidityDebts: [
+                          ...plan.liquidityDebts,
+                          { id: "", label: "New debt", amount: 0 },
+                        ],
+                      })
+                    }
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add debt
+                  </Button>
                 </CardHeader>
                 <CardContent>
-                  {creditCards.length === 0 ? (
-                    <p className="text-sm text-slate-500">No credit card debts</p>
+                  {plan.liquidityDebts.length === 0 ? (
+                    <p className="text-sm text-slate-500">No debts added</p>
                   ) : (
                     <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-slate-500">
+                          <th className="p-2">Debt</th>
+                          <th className="p-2">Amount (₹)</th>
+                        </tr>
+                      </thead>
                       <tbody>
-                        {creditCards.map((card) => (
-                          <tr key={card.id} className="border-b">
-                            <td className="p-2">{card.cardName}</td>
-                            <td className="p-2 text-right font-medium">
-                              {formatINR(card.outstanding)}
+                        {plan.liquidityDebts.map((row) => (
+                          <tr key={row.id || row.label} className="border-b">
+                            <td className="p-2">
+                              <Input
+                                defaultValue={row.label}
+                                onBlur={(e) =>
+                                  savePlan({
+                                    ...plan,
+                                    liquidityDebts: plan.liquidityDebts.map((x) =>
+                                      x.id === row.id
+                                        ? { ...x, label: e.target.value }
+                                        : x
+                                    ),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                defaultValue={row.amount}
+                                onBlur={(e) =>
+                                  savePlan({
+                                    ...plan,
+                                    liquidityDebts: plan.liquidityDebts.map((x) =>
+                                      x.id === row.id
+                                        ? { ...x, amount: Number(e.target.value) || 0 }
+                                        : x
+                                    ),
+                                  })
+                                }
+                              />
                             </td>
                           </tr>
                         ))}
@@ -663,20 +746,46 @@ export function BudgetClient() {
                       )}
                     </span>
                   </CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      savePlan({
+                        ...plan,
+                        fixedExpenses: [
+                          ...plan.fixedExpenses,
+                          { id: "", label: "New fixed expense", amount: 0 },
+                        ],
+                      })
+                    }
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add fixed expense
+                  </Button>
                 </CardHeader>
                 <CardContent>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left text-slate-500">
                         <th className="p-2">Label</th>
-                        <th className="p-2">Amount</th>
+                        <th className="p-2">Amount (₹)</th>
                       </tr>
                     </thead>
                     <tbody>
                       {plan.fixedExpenses.map((row) => (
                         <tr key={row.id || row.label} className="border-b">
                           <td className="p-2">
-                            <span className="font-medium">{row.label}</span>
+                            <Input
+                              defaultValue={row.label}
+                              onBlur={(e) =>
+                                savePlan({
+                                  ...plan,
+                                  fixedExpenses: plan.fixedExpenses.map((x) =>
+                                    x.id === row.id ? { ...x, label: e.target.value } : x
+                                  ),
+                                })
+                              }
+                            />
                           </td>
                           <td className="p-2">
                             <Input
@@ -733,7 +842,7 @@ export function BudgetClient() {
                     <thead>
                       <tr className="border-b text-left text-slate-500">
                         <th className="p-2">Label</th>
-                        <th className="p-2">Amount</th>
+                        <th className="p-2">Amount (₹)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -811,11 +920,11 @@ export function BudgetClient() {
                       (s, e) => s + e.amount,
                       0
                     );
-                    const creditCardDebt = debtSummary?.totalCreditCard ?? 0;
+                    const debts = plan.liquidityDebts.reduce((s, e) => s + e.amount, 0);
                     const totalLiquid = currentLiquidity + receivables;
                     const totalExpenses = fixedExpenses + variableExpenses;
-                    const totalOutflow = creditCardDebt + totalExpenses;
-                    const monthlyBalance = totalLiquid - totalOutflow;
+                    const totalOutflow = debts + totalExpenses;
+                    const netLiquidity = totalLiquid - totalOutflow;
                     return (
                       <>
                         <div>
@@ -833,7 +942,7 @@ export function BudgetClient() {
                         <div>
                           <p className="text-slate-500">Debts</p>
                           <p className="text-lg font-semibold">
-                            {formatINR(creditCardDebt)}
+                            {formatINR(debts)}
                           </p>
                         </div>
                         <div>
@@ -861,9 +970,13 @@ export function BudgetClient() {
                           </p>
                         </div>
                         <div className="sm:col-span-2">
-                          <p className="text-slate-500">Monthly balance</p>
-                          <p className="text-2xl font-bold">
-                            {formatINR(monthlyBalance)}
+                          <p className="text-slate-500">Net liquidity</p>
+                          <p
+                            className={`text-3xl font-extrabold ${
+                              netLiquidity >= 0 ? "text-green-700" : "text-red-700"
+                            }`}
+                          >
+                            {formatINR(netLiquidity)}
                           </p>
                         </div>
                       </>

@@ -35,6 +35,7 @@ export async function GET(
       liquidityAccounts: true,
       liquidityReceivables: true,
       liquidityExpenses: true,
+      liquidityDebts: true,
     },
   });
   if (!plan) {
@@ -57,6 +58,7 @@ export async function GET(
       liquidityAccounts: true,
       liquidityReceivables: true,
       liquidityExpenses: true,
+      liquidityDebts: true,
     },
   });
   if (!hydratedPlan) {
@@ -108,6 +110,7 @@ export async function PUT(
     expenseItems,
     liquidityAccounts,
     liquidityReceivables,
+    liquidityDebts,
     fixedExpenses,
     variableExpenses,
   } = body as {
@@ -125,6 +128,11 @@ export async function PUT(
       amount: number;
     }>;
     liquidityReceivables?: Array<{
+      id?: string;
+      label: string;
+      amount: number;
+    }>;
+    liquidityDebts?: Array<{
       id?: string;
       label: string;
       amount: number;
@@ -257,6 +265,38 @@ export async function PUT(
       }
     }
 
+    if (liquidityDebts) {
+      const existing = await tx.liquidityDebt.findMany({
+        where: { planId: plan.id },
+      });
+      const incomingIds = new Set(
+        liquidityDebts.filter((e) => e.id).map((e) => e.id as string)
+      );
+      const toDelete = existing.filter((e) => !incomingIds.has(e.id));
+      for (const d of toDelete) {
+        await tx.liquidityDebt.delete({ where: { id: d.id } });
+      }
+      for (const item of liquidityDebts) {
+        if (item.id) {
+          await tx.liquidityDebt.update({
+            where: { id: item.id },
+            data: {
+              label: item.label,
+              amount: Number(item.amount) || 0,
+            },
+          });
+        } else {
+          await tx.liquidityDebt.create({
+            data: {
+              planId: plan.id,
+              label: item.label,
+              amount: Number(item.amount) || 0,
+            },
+          });
+        }
+      }
+    }
+
     if (fixedExpenses || variableExpenses) {
       const incoming = [
         ...(fixedExpenses ?? []).map((e) => ({ ...e, kind: "FIXED" as const })),
@@ -321,6 +361,7 @@ export async function PUT(
       liquidityAccounts: true,
       liquidityReceivables: true,
       liquidityExpenses: true,
+      liquidityDebts: true,
     },
   });
   if (!updated) {
