@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +48,7 @@ type LoanRow = {
 };
 
 export function DebtsClient() {
+  const router = useRouter();
   const [summary, setSummary] = useState<{
     totalLoanOutstanding: number;
     totalCreditCard: number;
@@ -109,6 +111,13 @@ export function DebtsClient() {
     // #region agent log
     fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H6',location:'components/debts/DebtsClient.tsx:load:session',message:'Session endpoint response',data:{status:sessionRes.status,ok:sessionRes.ok,contentType:sessionRes.headers.get('content-type'),hasUser:!!(sessionJson&&typeof sessionJson==='object'&&!Array.isArray(sessionJson)&&'user' in sessionJson),hasUserId:!!(sessionJson&&typeof sessionJson==='object'&&!Array.isArray(sessionJson)&&'user' in sessionJson&&typeof (sessionJson as { user?: { id?: string } }).user?.id==='string')},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
+    if (!sessionRes.ok) {
+      // #region agent log
+      fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H13',location:'components/debts/DebtsClient.tsx:load:session-failed',message:'Session endpoint failed, redirecting to login',data:{status:sessionRes.status,from:'/debts'},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      router.replace("/login?from=/debts");
+      return;
+    }
     const [sRes, lRes, cRes] = await Promise.all([
       fetch("/api/debts/summary"),
       fetch("/api/debts/loans"),
@@ -138,13 +147,17 @@ export function DebtsClient() {
     setLoans(loansSafe);
     setCards(cardsSafe);
     if ([sRes.status, lRes.status, cRes.status].some((st) => st === 401)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H13',location:'components/debts/DebtsClient.tsx:load:unauthorized',message:'Debts unauthorized, redirecting to login',data:{from:'/debts',summaryStatus:sRes.status,loansStatus:lRes.status,cardsStatus:cRes.status},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       toast({
         title: "Session expired",
         description: "Please sign in again.",
         variant: "destructive",
       });
+      router.replace("/login?from=/debts");
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     load();
