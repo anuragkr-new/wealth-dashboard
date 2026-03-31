@@ -95,14 +95,44 @@ export function DebtsClient() {
   }, [newLoanScheduleRows, loanForm.principalAmount]);
 
   const load = useCallback(async () => {
-    const [s, l, c] = await Promise.all([
-      fetch("/api/debts/summary").then((r) => r.json()),
-      fetch("/api/debts/loans").then((r) => r.json()),
-      fetch("/api/debts/credit-cards").then((r) => r.json()),
+    // #region agent log
+    fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H1',location:'components/debts/DebtsClient.tsx:load:start',message:'Debts load started',data:{path:'/debts'},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    const [sRes, lRes, cRes] = await Promise.all([
+      fetch("/api/debts/summary"),
+      fetch("/api/debts/loans"),
+      fetch("/api/debts/credit-cards"),
     ]);
-    setSummary(s);
-    setLoans(l);
-    setCards(c);
+    const [s, l, c] = await Promise.all([sRes.json(), lRes.json(), cRes.json()]);
+    // #region agent log
+    fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H2',location:'components/debts/DebtsClient.tsx:load:responses',message:'Debts API response shapes',data:{summaryStatus:sRes.status,loansStatus:lRes.status,cardsStatus:cRes.status,summaryArray:Array.isArray(s),loansArray:Array.isArray(l),cardsArray:Array.isArray(c),summaryKeys:typeof s==='object'&&s?Object.keys(s as Record<string, unknown>).slice(0,5):[]},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    const loansSafe = Array.isArray(l) ? l : [];
+    const cardsSafe = Array.isArray(c) ? c : [];
+    const summarySafe =
+      s && typeof s === "object" && !Array.isArray(s)
+        ? {
+            totalLoanOutstanding: Number(
+              (s as { totalLoanOutstanding?: number }).totalLoanOutstanding ?? 0
+            ),
+            totalCreditCard: Number(
+              (s as { totalCreditCard?: number }).totalCreditCard ?? 0
+            ),
+            totalLiabilities: Number(
+              (s as { totalLiabilities?: number }).totalLiabilities ?? 0
+            ),
+          }
+        : { totalLoanOutstanding: 0, totalCreditCard: 0, totalLiabilities: 0 };
+    setSummary(summarySafe);
+    setLoans(loansSafe);
+    setCards(cardsSafe);
+    if ([sRes.status, lRes.status, cRes.status].some((st) => st === 401)) {
+      toast({
+        title: "Session expired",
+        description: "Please sign in again.",
+        variant: "destructive",
+      });
+    }
   }, []);
 
   useEffect(() => {
