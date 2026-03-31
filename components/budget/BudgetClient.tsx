@@ -72,6 +72,7 @@ export function BudgetClient() {
   };
 
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [activeTab, setActiveTab] = useState<"plan" | "liquidity" | "imports">("plan");
   const [debtSummary, setDebtSummary] = useState<{
     totalLoanOutstanding: number;
     totalCreditCard: number;
@@ -162,7 +163,11 @@ export function BudgetClient() {
         </div>
       </div>
 
-      <Tabs defaultValue="plan" className="w-full">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as "plan" | "liquidity" | "imports")}
+        className="w-full"
+      >
         <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="plan">Plan</TabsTrigger>
           <TabsTrigger value="liquidity">Liquidity</TabsTrigger>
