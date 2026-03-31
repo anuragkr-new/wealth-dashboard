@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
+const DEFAULT_FIXED_EXPENSES = [
+  "Rent + Maid + Cook",
+  "Groceries",
+  "EMI",
+];
 
 export async function POST(req: Request) {
   const userId = await requireUserId();
@@ -52,8 +57,20 @@ export async function POST(req: Request) {
           plannedAmount: Number(e.plannedAmount),
         })),
       },
+      liquidityExpenses: {
+        create: DEFAULT_FIXED_EXPENSES.map((label) => ({
+          label,
+          amount: 0,
+          kind: "FIXED" as const,
+        })),
+      },
     },
-    include: { expenseItems: true },
+    include: {
+      expenseItems: true,
+      liquidityAccounts: true,
+      liquidityReceivables: true,
+      liquidityExpenses: true,
+    },
   });
 
   return NextResponse.json(plan);

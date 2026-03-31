@@ -4,6 +4,11 @@ import { parseMonthYear } from "@/lib/utils";
 import { requireUserId, unauthorizedJson } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
+const DEFAULT_FIXED_EXPENSES = [
+  "Rent + Maid + Cook",
+  "Groceries",
+  "EMI",
+];
 
 export async function GET(
   _req: Request,
@@ -35,7 +40,39 @@ export async function GET(
   if (!plan) {
     return NextResponse.json(null);
   }
-  return NextResponse.json(plan);
+  if (!plan.liquidityExpenses.some((e) => e.kind === "FIXED")) {
+    await prisma.liquidityExpense.createMany({
+      data: DEFAULT_FIXED_EXPENSES.map((label) => ({
+        planId: plan.id,
+        label,
+        amount: 0,
+        kind: "FIXED",
+      })),
+    });
+  }
+  const hydratedPlan = await prisma.monthlyPlan.findUnique({
+    where: { id: plan.id },
+    include: {
+      expenseItems: true,
+      liquidityAccounts: true,
+      liquidityReceivables: true,
+      liquidityExpenses: true,
+    },
+  });
+  if (!hydratedPlan) {
+    return NextResponse.json(null);
+  }
+  const fixedExpenses = hydratedPlan.liquidityExpenses.filter(
+    (e) => e.kind === "FIXED"
+  );
+  const variableExpenses = hydratedPlan.liquidityExpenses.filter(
+    (e) => e.kind === "VARIABLE"
+  );
+  return NextResponse.json({
+    ...hydratedPlan,
+    fixedExpenses,
+    variableExpenses,
+  });
 }
 
 export async function PUT(
@@ -71,7 +108,8 @@ export async function PUT(
     expenseItems,
     liquidityAccounts,
     liquidityReceivables,
-    liquidityExpenses,
+    fixedExpenses,
+    variableExpenses,
   } = body as {
     plannedIncome?: number;
     actualIncome?: number | null;
@@ -91,7 +129,12 @@ export async function PUT(
       label: string;
       amount: number;
     }>;
-    liquidityExpenses?: Array<{
+    fixedExpenses?: Array<{
+      id?: string;
+      label: string;
+      amount: number;
+    }>;
+    variableExpenses?: Array<{
       id?: string;
       label: string;
       amount: number;
@@ -214,24 +257,32 @@ export async function PUT(
       }
     }
 
-    if (liquidityExpenses) {
+    if (fixedExpenses || variableExpenses) {
+      const incoming = [
+        ...(fixedExpenses ?? []).map((e) => ({ ...e, kind: "FIXED" as const })),
+        ...(variableExpenses ?? []).map((e) => ({
+          ...e,
+          kind: "VARIABLE" as const,
+        })),
+      ];
       const existing = await tx.liquidityExpense.findMany({
         where: { planId: plan.id },
       });
       const incomingIds = new Set(
-        liquidityExpenses.filter((e) => e.id).map((e) => e.id as string)
+        incoming.filter((e) => e.id).map((e) => e.id as string)
       );
       const toDelete = existing.filter((e) => !incomingIds.has(e.id));
       for (const d of toDelete) {
         await tx.liquidityExpense.delete({ where: { id: d.id } });
       }
-      for (const item of liquidityExpenses) {
+      for (const item of incoming) {
         if (item.id) {
           await tx.liquidityExpense.update({
             where: { id: item.id },
             data: {
               label: item.label,
               amount: Number(item.amount) || 0,
+              kind: item.kind,
             },
           });
         } else {
@@ -240,12 +291,28 @@ export async function PUT(
               planId: plan.id,
               label: item.label,
               amount: Number(item.amount) || 0,
+              kind: item.kind,
             },
           });
         }
       }
     }
   });
+
+  // Backfill default fixed rows if plan has none (older months/plans).
+  const fixedCount = await prisma.liquidityExpense.count({
+    where: { planId: plan.id, kind: "FIXED" },
+  });
+  if (fixedCount === 0) {
+    await prisma.liquidityExpense.createMany({
+      data: DEFAULT_FIXED_EXPENSES.map((label) => ({
+        planId: plan.id,
+        label,
+        amount: 0,
+        kind: "FIXED",
+      })),
+    });
+  }
 
   const updated = await prisma.monthlyPlan.findUnique({
     where: { id: plan.id },
@@ -256,5 +323,14 @@ export async function PUT(
       liquidityExpenses: true,
     },
   });
-  return NextResponse.json(updated);
+  if (!updated) {
+    return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+  }
+  return NextResponse.json({
+    ...updated,
+    fixedExpenses: updated.liquidityExpenses.filter((e) => e.kind === "FIXED"),
+    variableExpenses: updated.liquidityExpenses.filter(
+      (e) => e.kind === "VARIABLE"
+    ),
+  });
 }

@@ -41,7 +41,12 @@ type Plan = {
     label: string;
     amount: number;
   }>;
-  liquidityExpenses: Array<{
+  fixedExpenses: Array<{
+    id: string;
+    label: string;
+    amount: number;
+  }>;
+  variableExpenses: Array<{
     id: string;
     label: string;
     amount: number;
@@ -70,6 +75,20 @@ export function BudgetClient() {
     const { year: ny, month: nm } = addMonths(year, month, delta);
     setMonthKey(monthYearKey(ny, nm));
   };
+  const planningMonths = useMemo(() => {
+    const now = new Date();
+    const base = new Date(now.getFullYear(), now.getMonth(), 1);
+    return [0, 1, 2].map((offset) => {
+      const d = new Date(base);
+      d.setMonth(base.getMonth() + offset);
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      return {
+        key: monthYearKey(y, m),
+        label: d.toLocaleString("en-IN", { month: "short", year: "numeric" }),
+      };
+    });
+  }, []);
 
   const [plan, setPlan] = useState<Plan | null>(null);
   const [activeTab, setActiveTab] = useState<"plan" | "liquidity" | "imports">("plan");
@@ -78,6 +97,9 @@ export function BudgetClient() {
     totalCreditCard: number;
     totalLiabilities: number;
   } | null>(null);
+  const [creditCards, setCreditCards] = useState<
+    Array<{ id: string; cardName: string; outstanding: number }>
+  >([]);
   const [loading, setLoading] = useState(true);
   const [logged, setLogged] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -88,13 +110,15 @@ export function BudgetClient() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [p, d, debt] = await Promise.all([
+    const [p, d, debt, cards] = await Promise.all([
       fetch(`/api/budget/${monthKey}`).then((r) => r.json()),
       fetch(`/api/deviation`).then((r) => r.json()),
       fetch("/api/debts/summary").then((r) => r.json()),
+      fetch("/api/debts/credit-cards").then((r) => r.json()),
     ]);
     setPlan(p);
     setDebtSummary(debt);
+    setCreditCards(Array.isArray(cards) ? cards : []);
     setLogged(
       Array.isArray(d) &&
         d.some((x: { month: number; year: number }) => x.month === month && x.year === year)
@@ -129,7 +153,12 @@ export function BudgetClient() {
           label: e.label,
           amount: e.amount,
         })),
-        liquidityExpenses: next.liquidityExpenses.map((e) => ({
+        fixedExpenses: next.fixedExpenses.map((e) => ({
+          id: e.id,
+          label: e.label,
+          amount: e.amount,
+        })),
+        variableExpenses: next.variableExpenses.map((e) => ({
           id: e.id,
           label: e.label,
           amount: e.amount,
@@ -161,6 +190,19 @@ export function BudgetClient() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs text-slate-500">3-month plan:</p>
+        {planningMonths.map((m) => (
+          <Button
+            key={m.key}
+            size="sm"
+            variant={m.key === monthKey ? "default" : "outline"}
+            onClick={() => setMonthKey(m.key)}
+          >
+            {m.label}
+          </Button>
+        ))}
       </div>
 
       <Tabs
@@ -436,7 +478,14 @@ export function BudgetClient() {
             <>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Current Liquidity</CardTitle>
+                  <CardTitle>
+                    Current Liquidity{" "}
+                    <span className="text-base font-semibold text-slate-600">
+                      {formatINR(
+                        plan.liquidityAccounts.reduce((s, e) => s + e.amount, 0)
+                      )}
+                    </span>
+                  </CardTitle>
                   <Button
                     size="sm"
                     variant="outline"
@@ -503,7 +552,14 @@ export function BudgetClient() {
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Money to be received</CardTitle>
+                  <CardTitle>
+                    Amount to be Received{" "}
+                    <span className="text-base font-semibold text-slate-600">
+                      {formatINR(
+                        plan.liquidityReceivables.reduce((s, e) => s + e.amount, 0)
+                      )}
+                    </span>
+                  </CardTitle>
                   <Button
                     size="sm"
                     variant="outline"
@@ -570,36 +626,106 @@ export function BudgetClient() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Credit Card Debts</CardTitle>
+                  <CardTitle>
+                    Debts (from Debts module){" "}
+                    <span className="text-base font-semibold text-slate-600">
+                      {formatINR(debtSummary?.totalCreditCard ?? 0)}
+                    </span>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-slate-500">
-                    Read-only from Debts section
-                  </p>
-                  <p className="mt-1 text-lg font-semibold">
-                    {formatINR(debtSummary?.totalCreditCard ?? 0)}
-                  </p>
+                  {creditCards.length === 0 ? (
+                    <p className="text-sm text-slate-500">No credit card debts</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {creditCards.map((card) => (
+                          <tr key={card.id} className="border-b">
+                            <td className="p-2">{card.cardName}</td>
+                            <td className="p-2 text-right font-medium">
+                              {formatINR(card.outstanding)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Expenses</CardTitle>
+                  <CardTitle>
+                    Fixed Expenses{" "}
+                    <span className="text-base font-semibold text-slate-600">
+                      {formatINR(
+                        plan.fixedExpenses.reduce((s, e) => s + e.amount, 0)
+                      )}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-slate-500">
+                        <th className="p-2">Label</th>
+                        <th className="p-2">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plan.fixedExpenses.map((row) => (
+                        <tr key={row.id || row.label} className="border-b">
+                          <td className="p-2">
+                            <span className="font-medium">{row.label}</span>
+                          </td>
+                          <td className="p-2">
+                            <Input
+                              type="number"
+                              defaultValue={row.amount}
+                              onBlur={(e) =>
+                                savePlan({
+                                  ...plan,
+                                  fixedExpenses: plan.fixedExpenses.map((x) =>
+                                    x.id === row.id
+                                      ? { ...x, amount: Number(e.target.value) || 0 }
+                                      : x
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>
+                    Variable Expenses{" "}
+                    <span className="text-base font-semibold text-slate-600">
+                      {formatINR(
+                        plan.variableExpenses.reduce((s, e) => s + e.amount, 0)
+                      )}
+                    </span>
+                  </CardTitle>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() =>
                       savePlan({
                         ...plan,
-                        liquidityExpenses: [
-                          ...plan.liquidityExpenses,
-                          { id: "", label: "New expense", amount: 0 },
+                        variableExpenses: [
+                          ...plan.variableExpenses,
+                          { id: "", label: "Variable Expense", amount: 0 },
                         ],
                       })
                     }
                   >
                     <Plus className="mr-1 h-4 w-4" />
-                    Add expense
+                    Add variable expense
                   </Button>
                 </CardHeader>
                 <CardContent>
@@ -611,7 +737,7 @@ export function BudgetClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {plan.liquidityExpenses.map((row) => (
+                      {plan.variableExpenses.map((row) => (
                         <tr key={row.id || row.label} className="border-b">
                           <td className="p-2">
                             <Input
@@ -619,7 +745,7 @@ export function BudgetClient() {
                               onBlur={(e) =>
                                 savePlan({
                                   ...plan,
-                                  liquidityExpenses: plan.liquidityExpenses.map((x) =>
+                                  variableExpenses: plan.variableExpenses.map((x) =>
                                     x.id === row.id ? { ...x, label: e.target.value } : x
                                   ),
                                 })
@@ -633,7 +759,7 @@ export function BudgetClient() {
                               onBlur={(e) =>
                                 savePlan({
                                   ...plan,
-                                  liquidityExpenses: plan.liquidityExpenses.map((x) =>
+                                  variableExpenses: plan.variableExpenses.map((x) =>
                                     x.id === row.id
                                       ? { ...x, amount: Number(e.target.value) || 0 }
                                       : x
@@ -651,7 +777,21 @@ export function BudgetClient() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Net Liquidity Summary</CardTitle>
+                  <CardTitle>Total Expenses</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">
+                    {formatINR(
+                      plan.fixedExpenses.reduce((s, e) => s + e.amount, 0) +
+                        plan.variableExpenses.reduce((s, e) => s + e.amount, 0)
+                    )}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Monthly Balance</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
                   {(() => {
@@ -663,16 +803,19 @@ export function BudgetClient() {
                       (s, e) => s + e.amount,
                       0
                     );
-                    const liquidityExpenses = plan.liquidityExpenses.reduce(
+                    const fixedExpenses = plan.fixedExpenses.reduce(
+                      (s, e) => s + e.amount,
+                      0
+                    );
+                    const variableExpenses = plan.variableExpenses.reduce(
                       (s, e) => s + e.amount,
                       0
                     );
                     const creditCardDebt = debtSummary?.totalCreditCard ?? 0;
-                    const netLiquidity =
-                      currentLiquidity +
-                      receivables -
-                      creditCardDebt -
-                      liquidityExpenses;
+                    const totalLiquid = currentLiquidity + receivables;
+                    const totalExpenses = fixedExpenses + variableExpenses;
+                    const totalOutflow = creditCardDebt + totalExpenses;
+                    const monthlyBalance = totalLiquid - totalOutflow;
                     return (
                       <>
                         <div>
@@ -688,21 +831,39 @@ export function BudgetClient() {
                           </p>
                         </div>
                         <div>
-                          <p className="text-slate-500">Credit card debts</p>
+                          <p className="text-slate-500">Debts</p>
                           <p className="text-lg font-semibold">
                             {formatINR(creditCardDebt)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-slate-500">Expenses</p>
+                          <p className="text-slate-500">Fixed expenses</p>
                           <p className="text-lg font-semibold">
-                            {formatINR(liquidityExpenses)}
+                            {formatINR(fixedExpenses)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Variable expenses</p>
+                          <p className="text-lg font-semibold">
+                            {formatINR(variableExpenses)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Total liquid</p>
+                          <p className="text-lg font-semibold">
+                            {formatINR(totalLiquid)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Total outflow</p>
+                          <p className="text-lg font-semibold">
+                            {formatINR(totalOutflow)}
                           </p>
                         </div>
                         <div className="sm:col-span-2">
-                          <p className="text-slate-500">Net liquidity</p>
+                          <p className="text-slate-500">Monthly balance</p>
                           <p className="text-2xl font-bold">
-                            {formatINR(netLiquidity)}
+                            {formatINR(monthlyBalance)}
                           </p>
                         </div>
                       </>
