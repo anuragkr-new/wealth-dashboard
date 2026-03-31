@@ -103,6 +103,9 @@ model MonthlyPlan {
   userId         String
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   expenseItems   ExpenseItem[]
+  liquidityAccounts    LiquidityAccount[]
+  liquidityReceivables LiquidityReceivable[]
+  liquidityExpenses    LiquidityExpense[]
 
   @@unique([userId, month, year])
   @@index([userId])
@@ -117,6 +120,42 @@ model ExpenseItem {
   planId         String
   createdAt      DateTime            @default(now())
   importLines    ExpenseImportLine[]
+}
+
+model LiquidityAccount {
+  id        String      @id @default(cuid())
+  label     String
+  amount    Float       @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  planId    String
+  plan      MonthlyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+}
+
+model LiquidityReceivable {
+  id        String      @id @default(cuid())
+  label     String
+  amount    Float       @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  planId    String
+  plan      MonthlyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+}
+
+model LiquidityExpense {
+  id        String      @id @default(cuid())
+  label     String
+  amount    Float       @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  planId    String
+  plan      MonthlyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
 }
 
 model DeviationLog {

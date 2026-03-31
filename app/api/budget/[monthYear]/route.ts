@@ -25,7 +25,12 @@ export async function GET(
         year: parsed.year,
       },
     },
-    include: { expenseItems: true },
+    include: {
+      expenseItems: true,
+      liquidityAccounts: true,
+      liquidityReceivables: true,
+      liquidityExpenses: true,
+    },
   });
   if (!plan) {
     return NextResponse.json(null);
@@ -64,6 +69,9 @@ export async function PUT(
     plannedIncome,
     actualIncome,
     expenseItems,
+    liquidityAccounts,
+    liquidityReceivables,
+    liquidityExpenses,
   } = body as {
     plannedIncome?: number;
     actualIncome?: number | null;
@@ -72,6 +80,21 @@ export async function PUT(
       label: string;
       plannedAmount: number;
       actualAmount?: number | null;
+    }>;
+    liquidityAccounts?: Array<{
+      id?: string;
+      label: string;
+      amount: number;
+    }>;
+    liquidityReceivables?: Array<{
+      id?: string;
+      label: string;
+      amount: number;
+    }>;
+    liquidityExpenses?: Array<{
+      id?: string;
+      label: string;
+      amount: number;
     }>;
   };
 
@@ -126,11 +149,112 @@ export async function PUT(
         }
       }
     }
+
+    if (liquidityAccounts) {
+      const existing = await tx.liquidityAccount.findMany({
+        where: { planId: plan.id },
+      });
+      const incomingIds = new Set(
+        liquidityAccounts.filter((e) => e.id).map((e) => e.id as string)
+      );
+      const toDelete = existing.filter((e) => !incomingIds.has(e.id));
+      for (const d of toDelete) {
+        await tx.liquidityAccount.delete({ where: { id: d.id } });
+      }
+      for (const item of liquidityAccounts) {
+        if (item.id) {
+          await tx.liquidityAccount.update({
+            where: { id: item.id },
+            data: {
+              label: item.label,
+              amount: Number(item.amount) || 0,
+            },
+          });
+        } else {
+          await tx.liquidityAccount.create({
+            data: {
+              planId: plan.id,
+              label: item.label,
+              amount: Number(item.amount) || 0,
+            },
+          });
+        }
+      }
+    }
+
+    if (liquidityReceivables) {
+      const existing = await tx.liquidityReceivable.findMany({
+        where: { planId: plan.id },
+      });
+      const incomingIds = new Set(
+        liquidityReceivables.filter((e) => e.id).map((e) => e.id as string)
+      );
+      const toDelete = existing.filter((e) => !incomingIds.has(e.id));
+      for (const d of toDelete) {
+        await tx.liquidityReceivable.delete({ where: { id: d.id } });
+      }
+      for (const item of liquidityReceivables) {
+        if (item.id) {
+          await tx.liquidityReceivable.update({
+            where: { id: item.id },
+            data: {
+              label: item.label,
+              amount: Number(item.amount) || 0,
+            },
+          });
+        } else {
+          await tx.liquidityReceivable.create({
+            data: {
+              planId: plan.id,
+              label: item.label,
+              amount: Number(item.amount) || 0,
+            },
+          });
+        }
+      }
+    }
+
+    if (liquidityExpenses) {
+      const existing = await tx.liquidityExpense.findMany({
+        where: { planId: plan.id },
+      });
+      const incomingIds = new Set(
+        liquidityExpenses.filter((e) => e.id).map((e) => e.id as string)
+      );
+      const toDelete = existing.filter((e) => !incomingIds.has(e.id));
+      for (const d of toDelete) {
+        await tx.liquidityExpense.delete({ where: { id: d.id } });
+      }
+      for (const item of liquidityExpenses) {
+        if (item.id) {
+          await tx.liquidityExpense.update({
+            where: { id: item.id },
+            data: {
+              label: item.label,
+              amount: Number(item.amount) || 0,
+            },
+          });
+        } else {
+          await tx.liquidityExpense.create({
+            data: {
+              planId: plan.id,
+              label: item.label,
+              amount: Number(item.amount) || 0,
+            },
+          });
+        }
+      }
+    }
   });
 
   const updated = await prisma.monthlyPlan.findUnique({
     where: { id: plan.id },
-    include: { expenseItems: true },
+    include: {
+      expenseItems: true,
+      liquidityAccounts: true,
+      liquidityReceivables: true,
+      liquidityExpenses: true,
+    },
   });
   return NextResponse.json(updated);
 }

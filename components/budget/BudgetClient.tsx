@@ -31,6 +31,21 @@ type Plan = {
     plannedAmount: number;
     actualAmount: number | null;
   }>;
+  liquidityAccounts: Array<{
+    id: string;
+    label: string;
+    amount: number;
+  }>;
+  liquidityReceivables: Array<{
+    id: string;
+    label: string;
+    amount: number;
+  }>;
+  liquidityExpenses: Array<{
+    id: string;
+    label: string;
+    amount: number;
+  }>;
 };
 
 export function BudgetClient() {
@@ -57,6 +72,11 @@ export function BudgetClient() {
   };
 
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [debtSummary, setDebtSummary] = useState<{
+    totalLoanOutstanding: number;
+    totalCreditCard: number;
+    totalLiabilities: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [logged, setLogged] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -67,11 +87,13 @@ export function BudgetClient() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [p, d] = await Promise.all([
+    const [p, d, debt] = await Promise.all([
       fetch(`/api/budget/${monthKey}`).then((r) => r.json()),
       fetch(`/api/deviation`).then((r) => r.json()),
+      fetch("/api/debts/summary").then((r) => r.json()),
     ]);
     setPlan(p);
+    setDebtSummary(debt);
     setLogged(
       Array.isArray(d) &&
         d.some((x: { month: number; year: number }) => x.month === month && x.year === year)
@@ -95,6 +117,21 @@ export function BudgetClient() {
           label: e.label,
           plannedAmount: e.plannedAmount,
           actualAmount: e.actualAmount,
+        })),
+        liquidityAccounts: next.liquidityAccounts.map((e) => ({
+          id: e.id,
+          label: e.label,
+          amount: e.amount,
+        })),
+        liquidityReceivables: next.liquidityReceivables.map((e) => ({
+          id: e.id,
+          label: e.label,
+          amount: e.amount,
+        })),
+        liquidityExpenses: next.liquidityExpenses.map((e) => ({
+          id: e.id,
+          label: e.label,
+          amount: e.amount,
         })),
       }),
     });
@@ -126,8 +163,9 @@ export function BudgetClient() {
       </div>
 
       <Tabs defaultValue="plan" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="plan">Plan</TabsTrigger>
+          <TabsTrigger value="liquidity">Liquidity</TabsTrigger>
           <TabsTrigger value="imports">Statement imports</TabsTrigger>
         </TabsList>
         <TabsContent value="plan" className="space-y-6">
@@ -379,6 +417,294 @@ export function BudgetClient() {
                   Lock & log deviation
                 </Button>
               )}
+            </>
+          )}
+        </TabsContent>
+        <TabsContent value="liquidity" className="space-y-6">
+          {!plan ? (
+            <Card>
+              <CardContent className="py-10 text-center text-slate-500">
+                Create this month&apos;s plan to start tracking liquidity.
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Current Liquidity</CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      savePlan({
+                        ...plan,
+                        liquidityAccounts: [
+                          ...plan.liquidityAccounts,
+                          { id: "", label: "New account", amount: 0 },
+                        ],
+                      })
+                    }
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add source
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-slate-500">
+                        <th className="p-2">Account/Bucket</th>
+                        <th className="p-2">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plan.liquidityAccounts.map((row) => (
+                        <tr key={row.id || row.label} className="border-b">
+                          <td className="p-2">
+                            <Input
+                              defaultValue={row.label}
+                              onBlur={(e) =>
+                                savePlan({
+                                  ...plan,
+                                  liquidityAccounts: plan.liquidityAccounts.map((x) =>
+                                    x.id === row.id ? { ...x, label: e.target.value } : x
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="p-2">
+                            <Input
+                              type="number"
+                              defaultValue={row.amount}
+                              onBlur={(e) =>
+                                savePlan({
+                                  ...plan,
+                                  liquidityAccounts: plan.liquidityAccounts.map((x) =>
+                                    x.id === row.id
+                                      ? { ...x, amount: Number(e.target.value) || 0 }
+                                      : x
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Money to be received</CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      savePlan({
+                        ...plan,
+                        liquidityReceivables: [
+                          ...plan.liquidityReceivables,
+                          { id: "", label: "New receivable", amount: 0 },
+                        ],
+                      })
+                    }
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add receivable
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-slate-500">
+                        <th className="p-2">Source</th>
+                        <th className="p-2">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plan.liquidityReceivables.map((row) => (
+                        <tr key={row.id || row.label} className="border-b">
+                          <td className="p-2">
+                            <Input
+                              defaultValue={row.label}
+                              onBlur={(e) =>
+                                savePlan({
+                                  ...plan,
+                                  liquidityReceivables: plan.liquidityReceivables.map((x) =>
+                                    x.id === row.id ? { ...x, label: e.target.value } : x
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="p-2">
+                            <Input
+                              type="number"
+                              defaultValue={row.amount}
+                              onBlur={(e) =>
+                                savePlan({
+                                  ...plan,
+                                  liquidityReceivables: plan.liquidityReceivables.map((x) =>
+                                    x.id === row.id
+                                      ? { ...x, amount: Number(e.target.value) || 0 }
+                                      : x
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Credit Card Debts</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-slate-500">
+                    Read-only from Debts section
+                  </p>
+                  <p className="mt-1 text-lg font-semibold">
+                    {formatINR(debtSummary?.totalCreditCard ?? 0)}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Expenses</CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      savePlan({
+                        ...plan,
+                        liquidityExpenses: [
+                          ...plan.liquidityExpenses,
+                          { id: "", label: "New expense", amount: 0 },
+                        ],
+                      })
+                    }
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add expense
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-slate-500">
+                        <th className="p-2">Label</th>
+                        <th className="p-2">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plan.liquidityExpenses.map((row) => (
+                        <tr key={row.id || row.label} className="border-b">
+                          <td className="p-2">
+                            <Input
+                              defaultValue={row.label}
+                              onBlur={(e) =>
+                                savePlan({
+                                  ...plan,
+                                  liquidityExpenses: plan.liquidityExpenses.map((x) =>
+                                    x.id === row.id ? { ...x, label: e.target.value } : x
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="p-2">
+                            <Input
+                              type="number"
+                              defaultValue={row.amount}
+                              onBlur={(e) =>
+                                savePlan({
+                                  ...plan,
+                                  liquidityExpenses: plan.liquidityExpenses.map((x) =>
+                                    x.id === row.id
+                                      ? { ...x, amount: Number(e.target.value) || 0 }
+                                      : x
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Net Liquidity Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
+                  {(() => {
+                    const currentLiquidity = plan.liquidityAccounts.reduce(
+                      (s, e) => s + e.amount,
+                      0
+                    );
+                    const receivables = plan.liquidityReceivables.reduce(
+                      (s, e) => s + e.amount,
+                      0
+                    );
+                    const liquidityExpenses = plan.liquidityExpenses.reduce(
+                      (s, e) => s + e.amount,
+                      0
+                    );
+                    const creditCardDebt = debtSummary?.totalCreditCard ?? 0;
+                    const netLiquidity =
+                      currentLiquidity +
+                      receivables -
+                      creditCardDebt -
+                      liquidityExpenses;
+                    return (
+                      <>
+                        <div>
+                          <p className="text-slate-500">Current liquidity</p>
+                          <p className="text-lg font-semibold">
+                            {formatINR(currentLiquidity)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Receivables</p>
+                          <p className="text-lg font-semibold">
+                            {formatINR(receivables)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Credit card debts</p>
+                          <p className="text-lg font-semibold">
+                            {formatINR(creditCardDebt)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Expenses</p>
+                          <p className="text-lg font-semibold">
+                            {formatINR(liquidityExpenses)}
+                          </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <p className="text-slate-500">Net liquidity</p>
+                          <p className="text-2xl font-bold">
+                            {formatINR(netLiquidity)}
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
             </>
           )}
         </TabsContent>
