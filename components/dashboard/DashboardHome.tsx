@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   LineChart,
   Line,
@@ -127,6 +128,7 @@ function HeroGraphic() {
 export function DashboardHome() {
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     fetch("/api/dashboard")
@@ -134,17 +136,25 @@ export function DashboardHome() {
         // #region agent log
         fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H7',location:'components/dashboard/DashboardHome.tsx:useEffect:response',message:'Dashboard API response status',data:{status:r.status,ok:r.ok},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
+        if (r.status === 401) {
+          // #region agent log
+          fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H12',location:'components/dashboard/DashboardHome.tsx:useEffect:401',message:'Dashboard unauthorized, redirecting to login',data:{from:'/'},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          router.replace("/login?from=/");
+          throw new Error("Session expired");
+        }
         if (!r.ok) throw new Error("Failed to load dashboard");
         return r.json();
       })
       .then(setData)
-      .catch((e) => {
+      .catch((e: unknown) => {
+        if (e instanceof Error && e.message === "Session expired") return;
         // #region agent log
         fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H8',location:'components/dashboard/DashboardHome.tsx:useEffect:catch',message:'Dashboard load catch',data:{errorMessage:e instanceof Error?e.message:String(e)},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
-        setErr(e.message);
+        setErr(e instanceof Error ? e.message : String(e));
       });
-  }, []);
+  }, [router]);
 
   if (err) {
     return (
