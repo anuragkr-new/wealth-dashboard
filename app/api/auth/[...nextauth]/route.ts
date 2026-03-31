@@ -1,6 +1,7 @@
 import { handlers } from "@/auth";
+import type { NextRequest } from "next/server";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     return await handlers.GET(req);
   } catch (error) {
@@ -11,7 +12,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     return await handlers.POST(req);
   } catch (error) {
