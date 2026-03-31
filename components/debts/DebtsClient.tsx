@@ -98,6 +98,17 @@ export function DebtsClient() {
     // #region agent log
     fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H1',location:'components/debts/DebtsClient.tsx:load:start',message:'Debts load started',data:{path:'/debts'},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
+    const sessionRes = await fetch("/api/auth/session", { cache: "no-store" });
+    const sessionRaw = await sessionRes.text();
+    let sessionJson: unknown = null;
+    try {
+      sessionJson = sessionRaw ? JSON.parse(sessionRaw) : null;
+    } catch {
+      sessionJson = null;
+    }
+    // #region agent log
+    fetch('http://127.0.0.1:7439/ingest/1dc070df-a61f-458e-8ec9-144680a2ac1b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'553583'},body:JSON.stringify({sessionId:'553583',runId:'initial',hypothesisId:'H6',location:'components/debts/DebtsClient.tsx:load:session',message:'Session endpoint response',data:{status:sessionRes.status,ok:sessionRes.ok,contentType:sessionRes.headers.get('content-type'),hasUser:!!(sessionJson&&typeof sessionJson==='object'&&!Array.isArray(sessionJson)&&'user' in sessionJson),hasUserId:!!(sessionJson&&typeof sessionJson==='object'&&!Array.isArray(sessionJson)&&'user' in sessionJson&&typeof (sessionJson as { user?: { id?: string } }).user?.id==='string')},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const [sRes, lRes, cRes] = await Promise.all([
       fetch("/api/debts/summary"),
       fetch("/api/debts/loans"),
